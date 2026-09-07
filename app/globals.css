@@ -1,0 +1,147 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Тёмная тема переключается классом .dark на <html> (next-themes),
+   а не системной media-query — иначе ручной переключатель не работал бы. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+
+  --color-paper: #f5f4ef;
+  --color-paper-raised: #ffffff;
+  --color-ink: #171b21;
+  --color-ink-soft: #565d68;
+  --color-line: #dedad0;
+
+  --color-on-accent: #ffffff;
+
+  --color-signal: #2451b3;
+  --color-signal-soft: #e7edfb;
+  --color-signal-ink: #16336f;
+
+  --color-stage-todo: #6b7280;
+  --color-stage-todo-soft: #eceef1;
+  --color-stage-progress: #c9852a;
+  --color-stage-progress-soft: #faf0dd;
+  --color-stage-review: #7c5cbf;
+  --color-stage-review-soft: #f1ecfb;
+  --color-stage-done: #2e9e6c;
+  --color-stage-done-soft: #e6f5ee;
+
+  --color-danger: #c34d4d;
+  --color-danger-soft: #fbeaea;
+
+  --color-urgent: #e8420c;
+  --color-urgent-soft: #fdeae1;
+
+  --radius-card: 0.625rem;
+  --radius-control: 0.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+  html {
+    color-scheme: light;
+  }
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-ink-soft);
+  }
+
+  .panel {
+    background-color: var(--color-paper-raised);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  .card-hover {
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-signal);
+    box-shadow: 0 8px 20px rgba(23, 27, 33, 0.06);
+  }
+
+  .rail-dash {
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--color-line) 0,
+      var(--color-line) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+  }
+
+  @keyframes shard-fly {
+    to {
+      transform: translate(var(--tx), var(--ty)) rotate(var(--rot));
+      opacity: 0;
+    }
+  }
+  .animate-shard-fly {
+    animation: shard-fly 0.6s ease-out forwards;
+  }
+}
+
+/* --- Тёмная тема ---------------------------------------------------------
+   Весь интерфейс покрашен через семантические токены (--color-paper,
+   --color-ink и т.д.), поэтому тёмная тема — это переопределение тех же
+   переменных. Блок специально вне @layer: неслоённые правила выигрывают
+   у слоя theme, который генерирует Tailwind из @theme. */
+.dark {
+  --color-paper: #1b1f27;
+  --color-paper-raised: #242932;
+  --color-ink: #eaecef;
+  --color-ink-soft: #a3acb8;
+  --color-line: #38404b;
+
+  /* На тёмном фоне акценты светлее подложки, поэтому текст поверх них —
+     тёмный, а не белый. */
+  --color-on-accent: #12161d;
+
+  --color-signal: #6f9bf0;
+  --color-signal-soft: #26344f;
+  --color-signal-ink: #8fb2f5;
+
+  --color-stage-todo: #98a1ad;
+  --color-stage-todo-soft: #2e343d;
+  --color-stage-progress: #dfa858;
+  --color-stage-progress-soft: #3f3423;
+  --color-stage-review: #ac92e4;
+  --color-stage-review-soft: #342c4c;
+  --color-stage-done: #4cc191;
+  --color-stage-done-soft: #1e3b2b;
+
+  --color-danger: #e07c7c;
+  --color-danger-soft: #402828;
+
+  --color-urgent: #f2703f;
+  --color-urgent-soft: #46271a;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Светлая тень карточек на тёмном фоне не видна — усиливаем. */
+.dark .card-hover:hover {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}

@@ -1,0 +1,211 @@
+import { NextRequest, NextResponse, after } from "next/server";
+import { updateTaskSchema } from "@/lib/validation";
+import { createTaskEvent, deleteTask, getBoard, getTask, updateTask } from "@/lib/data";
+import { getCurrentUser } from "@/lib/session";
+import { boardDeepLink, escapeHtml } from "@/lib/telegram";
+import { notify } from "@/lib/notifications";
+import { STAGES, PRIORITIES } from "@/lib/schema";
+import type { TaskEventType } from "@/lib/models";
+
+function stageLabel(stage: string): string {
+  return STAGES.find((s) => s.id === stage)?.label ?? stage;
+}
+
+function priorityLabel(priority: string): string {
+  return PRIORITIES.find((p) => p.id === priority)?.label ?? priority;
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
+  }
+  const { id } = await params;
+
+  const body = await request.json().catch(() => null);
+  const parsed = updateTaskSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Некорректные данные", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  // Комментарий исполнителя и «Найдено, шт.» — поля, которые редактирует
+  // либо исполнитель, либо постановщик задачи; проверяем это отдельно
+  // (лишний запрос делаем только когда поле реально меняется, чтобы не
+  // тормозить обычное перетаскивание карточек по этапам). Заодно эта же
+  // «existing»-запись используется ниже, чтобы понять, сменился ли
+  // исполнитель/этап/приоритет/срок — для уведомлений и автолога истории.
+  const existing = await getTask(id);
+  if ("resultNote" in parsed.data || "foundCount" in parsed.data) {
+    if (!existing) {
+      return NextResponse.json({ error: "Задача не найдена" }, { status: 404 });
+    }
+    const isAssignee = existing.assigneeEmail === user.email;
+    const isCreatorOrUnknown = !existing.createdBy || existing.createdBy === user.email;
+
+    if ("resultNote" in parsed.data && !isAssignee) {
+      return NextResponse.json(
+        { error: "Комментарий может редактировать только исполнитель задачи" },
+        { status: 403 },
+      );
+    }
+    if ("foundCount" in parsed.data && !isAssignee && !isCreatorOrUnknown) {
+      return NextResponse.json(
+        { error: "Найдено количество может менять только создатель или исполнитель задачи" },
+        { status: 403 },
+      );
+    }
+  }
+
+  const previousAssignee = existing?.assigneeEmail ?? null;
+
+  // completedAt — источник истины для недельного архивирования «Готово»
+  // (см. lib/week.ts). Выставляется только здесь, на сервере, при реальной
+  // смене этапа — клиент не может передать его напрямую (нет в схеме).
+  let completedAtPatch: string | null | undefined;
+  if (existing && "stage" in parsed.data && parsed.data.stage !== existing.stage) {
+    completedAtPatch = parsed.data.stage === "done" ? new Date().toISOString() : null;
+  }
+  const task = await updateTask(
+    id,
+    completedAtPatch !== undefined ? { ...parsed.data, completedAt: completedAtPatch } : parsed.data,
+  );
+  if (!task) {
+    return NextResponse.json({ error: "Задача не найдена" }, { status: 404 });
+  }
+
+  // Автолог изменений — те же события потом показываются в ленте задачи
+  // (комментарии + история вперемешку, см. /api/tasks/[id]/events).
+  if (existing) {
+    const diffs: { type: TaskEventType; from: string | null; to: string | null }[] = [];
+    if ("stage" in parsed.data && task.stage !== existing.stage) {
+      diffs.push({ type: "stage_changed", from: existing.stage, to: task.stage });
+    }
+    if ("priority" in parsed.data && task.priority !== existing.priority) {
+      diffs.push({ type: "priority_changed", from: existing.priority, to: task.priority });
+    }
+    if ("assigneeEmail" in parsed.data && task.assigneeEmail !== existing.assigneeEmail) {
+      diffs.push({ type: "assignee_changed", from: existing.assigneeEmail, to: task.assigneeEmail });
+    }
+    if ("dueDate" in parsed.data && task.dueDate !== existing.dueDate) {
+      diffs.push({ type: "due_date_changed", from: existing.dueDate, to: task.dueDate });
+    }
+    for (const diff of diffs) {
+      after(() =>
+        createTaskEvent({
+          taskId: task.id,
+          type: diff.type,
+          authorEmail: user.email,
+          fromValue: diff.from,
+          toValue: diff.to,
+        }),
+      );
+    }
+  }
+
+  if (
+    "assigneeEmail" in parsed.data &&
+    task.assigneeEmail &&
+    task.assigneeEmail !== previousAssignee &&
+    task.assigneeEmail !== user.email
+  ) {
+    const board = await getBoard(task.boardId);
+    if (board) {
+      // after() — иначе fire-and-forget fetch к Telegram обрывается заморозкой
+      // serverless-функции сразу после ответа (Vercel), уведомление теряется
+      // или приходит только со следующим «тёплым» вызовом функции.
+      after(() =>
+        notify({
+          userEmail: task.assigneeEmail!,
+          type: "task_assigned",
+          title: `${user.name} назначил(а) вам задачу`,
+          body: task.title,
+          link: `/w/${board.workspaceId}/boards/${board.id}`,
+          telegramText: `📋 <b>${escapeHtml(user.name)}</b> назначил(а) вам задачу:\n<b>${escapeHtml(task.title)}</b>${
+            task.dueDate ? `\nСрок: ${new Date(task.dueDate).toLocaleDateString("ru-RU")}` : ""
+          }`,
+          telegramKeyboard: [
+            [{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }],
+            [
+              { text: "▶️ В работу", callback_data: `start:${task.id}` },
+              { text: "📅 +1 день", callback_data: `snooze:${task.id}` },
+              { text: "✅ Готово", callback_data: `done:${task.id}` },
+            ],
+          ],
+          prefKey: "notifyTaskAssigned",
+        }),
+      );
+    }
+  }
+
+  // Смена этапа — сообщаем постановщику задачи (если менял не он сам): так
+  // он узнаёт, что задача пришла «на проверку» или готова, не открывая доску.
+  if (
+    existing &&
+    "stage" in parsed.data &&
+    task.stage !== existing.stage &&
+    task.createdBy &&
+    task.createdBy !== user.email
+  ) {
+    const board = await getBoard(task.boardId);
+    if (board) {
+      after(() =>
+        notify({
+          userEmail: task.createdBy!,
+          type: "task_stage_changed",
+          title: `Этап изменён: ${task.title}`,
+          body: `${stageLabel(existing.stage)} → ${stageLabel(task.stage)} (${user.name})`,
+          link: `/w/${board.workspaceId}/boards/${board.id}`,
+          telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(existing.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
+          telegramKeyboard: [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
+          prefKey: "notifyStageChanges",
+        }),
+      );
+    }
+  }
+
+  return NextResponse.json({ task });
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
+  }
+  const { id } = await params;
+
+  const existing = await getTask(id);
+  const board = existing ? await getBoard(existing.boardId) : undefined;
+  await deleteTask(id);
+
+  if (existing && board) {
+    const recipients = new Set(
+      [existing.assigneeEmail, existing.createdBy].filter(
+        (e): e is string => Boolean(e) && e !== user.email,
+      ),
+    );
+    for (const recipient of recipients) {
+      after(() =>
+        notify({
+          userEmail: recipient,
+          type: "task_deleted",
+          title: `${user.name} удалил(а) задачу`,
+          body: existing.title,
+          link: `/w/${board.workspaceId}/boards/${board.id}`,
+          telegramText: `🗑️ <b>${escapeHtml(user.name)}</b> удалил(а) задачу:\n<b>${escapeHtml(existing.title)}</b>`,
+          prefKey: "notifyTaskDeleted",
+        }),
+      );
+    }
+  }
+
+  return NextResponse.json({ ok: true });
+}
