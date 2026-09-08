@@ -78,10 +78,17 @@ export async function PATCH(
   if (existing && "stage" in parsed.data && parsed.data.stage !== existing.stage) {
     completedAtPatch = parsed.data.stage === "done" ? new Date().toISOString() : null;
   }
-  const task = await updateTask(
-    id,
-    completedAtPatch !== undefined ? { ...parsed.data, completedAt: completedAtPatch } : parsed.data,
-  );
+  // `archived` в теле — это удобный флаг для клиента; саму метку времени
+  // проставляет сервер, как и completedAt. В store уходит уже archivedAt.
+  const { archived, ...fields } = parsed.data;
+  const archivedAtPatch =
+    archived === undefined ? undefined : archived ? new Date().toISOString() : null;
+
+  const task = await updateTask(id, {
+    ...fields,
+    ...(completedAtPatch !== undefined ? { completedAt: completedAtPatch } : {}),
+    ...(archivedAtPatch !== undefined ? { archivedAt: archivedAtPatch } : {}),
+  });
   if (!task) {
     return NextResponse.json({ error: "Задача не найдена" }, { status: 404 });
   }

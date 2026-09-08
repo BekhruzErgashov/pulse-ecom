@@ -91,6 +91,7 @@ function rowToTask(row: {
   assignee_email: string | null;
   due_date: string | null;
   completed_at: Date | null;
+  archived_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }): Task {
@@ -109,6 +110,7 @@ function rowToTask(row: {
     assigneeEmail: row.assignee_email,
     dueDate: row.due_date,
     completedAt: row.completed_at ? row.completed_at.toISOString() : null,
+    archivedAt: row.archived_at ? row.archived_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -569,7 +571,7 @@ export async function listMyTasksInWorkspace(
     `SELECT t.*, b.name AS board_name
      FROM tasks t
      JOIN boards b ON b.id = t.board_id
-     WHERE b.workspace_id = $1 AND t.assignee_email = $2
+     WHERE b.workspace_id = $1 AND t.assignee_email = $2 AND t.archived_at IS NULL
      ORDER BY t.created_at DESC`,
     [workspaceId, email],
   );
@@ -586,7 +588,7 @@ export async function listTasksCreatedByInWorkspace(
     `SELECT t.*, b.name AS board_name
      FROM tasks t
      JOIN boards b ON b.id = t.board_id
-     WHERE b.workspace_id = $1 AND t.created_by = $2
+     WHERE b.workspace_id = $1 AND t.created_by = $2 AND t.archived_at IS NULL
      ORDER BY t.created_at DESC`,
     [workspaceId, email],
   );
@@ -668,9 +670,20 @@ export async function createTask(input: {
 
 export async function listTasksByBoard(boardId: string): Promise<Task[]> {
   const pool = getPool();
-  const res = await pool.query("SELECT * FROM tasks WHERE board_id = $1 ORDER BY created_at ASC", [
-    boardId,
-  ]);
+  const res = await pool.query(
+    "SELECT * FROM tasks WHERE board_id = $1 AND archived_at IS NULL ORDER BY created_at ASC",
+    [boardId],
+  );
+  return res.rows.map(rowToTask);
+}
+
+/** Задачи, убранные в архив — отдельный список, в обычную доску они не попадают. Свежие сверху. */
+export async function listArchivedTasksByBoard(boardId: string): Promise<Task[]> {
+  const pool = getPool();
+  const res = await pool.query(
+    "SELECT * FROM tasks WHERE board_id = $1 AND archived_at IS NOT NULL ORDER BY archived_at DESC",
+    [boardId],
+  );
   return res.rows.map(rowToTask);
 }
 
@@ -697,6 +710,7 @@ export async function updateTask(
       | "assigneeEmail"
       | "dueDate"
       | "completedAt"
+      | "archivedAt"
     >
   >,
 ): Promise<Task | undefined> {
@@ -716,6 +730,7 @@ export async function updateTask(
     assigneeEmail: "assignee_email",
     dueDate: "due_date",
     completedAt: "completed_at",
+    archivedAt: "archived_at",
   };
   for (const [key, value] of Object.entries(patch)) {
     const column = columnMap[key];

@@ -3,15 +3,17 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Trash2 } from "lucide-react";
+import { Archive, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EditBoardDialog } from "@/components/edit-board-dialog";
+import { ArchiveDialog } from "@/components/archive-dialog";
 import type { Board } from "@/lib/models";
 
 export function BoardHeaderActions({ board: initialBoard }: { board: Board }) {
   const router = useRouter();
   const [board, setBoard] = React.useState(initialBoard);
   const [editOpen, setEditOpen] = React.useState(false);
+  const [archiveOpen, setArchiveOpen] = React.useState(false);
 
   function confirmDelete() {
     toast(`Удалить доску «${board.name}»?`, {
@@ -46,6 +48,9 @@ export function BoardHeaderActions({ board: initialBoard }: { board: Board }) {
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setArchiveOpen(true)}>
+            <Archive className="size-3.5" /> Архив
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
             <Pencil className="size-3.5" /> Редактировать
           </Button>
@@ -64,6 +69,12 @@ export function BoardHeaderActions({ board: initialBoard }: { board: Board }) {
         onOpenChange={setEditOpen}
         board={board}
         onUpdated={setBoard}
+      />
+      <ArchiveDialog
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        boardId={board.id}
+        onRestored={() => router.refresh()}
       />
     </>
   );

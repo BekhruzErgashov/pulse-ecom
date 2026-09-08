@@ -7,6 +7,7 @@ import { StageRail } from "@/components/stage-rail";
 import { StatusFilterDropdown, type StatusFilterValue } from "@/components/status-filter-dropdown";
 import { TaskCard } from "@/components/task-card";
 import { TaskDialog } from "@/components/task-dialog";
+import { TASKS_CHANGED_EVENT } from "@/lib/board-events";
 import { TodaySidebar } from "@/components/today-sidebar";
 import { WeekPicker } from "@/components/week-picker";
 import { Input } from "@/components/ui/input";
@@ -74,8 +75,7 @@ export function KanbanBoard({
   React.useEffect(() => {
     let cancelled = false;
 
-    async function poll() {
-      if (document.hidden || dialogOpenRef.current || draggingIdRef.current) return;
+    async function refresh() {
       try {
         const res = await fetch(`/api/boards/${boardId}?doneWeek=${doneWeekRef.current}`);
         if (res.ok && !cancelled) {
@@ -84,8 +84,17 @@ export function KanbanBoard({
           if (data.doneWeeks) setDoneWeeks(data.doneWeeks);
         }
       } catch {
-        // Тихо игнорируем — это фоновая, необязательная проверка.
+        // Тихо игнорируем — обновление доски необязательное.
       }
+    }
+
+    // Фоновый опрос вежливый: не дёргает сервер, пока вкладка скрыта, открыт
+    // диалог задачи или карточку тащат мышью. Обновление по явному действию
+    // пользователя (см. TASKS_CHANGED_EVENT ниже) этих ограничений не имеет —
+    // иначе возврат задачи из архива не был бы виден сразу.
+    async function poll() {
+      if (document.hidden || dialogOpenRef.current || draggingIdRef.current) return;
+      await refresh();
     }
 
     const interval = setInterval(poll, 12_000);
@@ -94,10 +103,20 @@ export function KanbanBoard({
     }
     document.addEventListener("visibilitychange", onVisibilityChange);
 
+    // Возврат задачи из архива происходит в диалоге, который живёт в шапке
+    // доски — это соседний компонент, состояние с канбаном не общее. Вместо
+    // прокидывания колбэков через страницу шапка шлёт событие, а канбан по
+    // нему сразу опрашивает доску, не дожидаясь 12-секундного интервала.
+    function onExternalChange() {
+      void refresh();
+    }
+    window.addEventListener(TASKS_CHANGED_EVENT, onExternalChange);
+
     return () => {
       cancelled = true;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener(TASKS_CHANGED_EVENT, onExternalChange);
     };
   }, [boardId]);
 
@@ -376,6 +395,7 @@ export function KanbanBoard({
         onCreated={handleCreated}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
+        onArchived={handleDeleted}
       />
     </div>
   );

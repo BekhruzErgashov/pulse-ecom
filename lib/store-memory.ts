@@ -375,7 +375,7 @@ export async function listMyTasksInWorkspace(
   );
   const boardNameById = new Map(boardsInWorkspace.map((b) => [b.id, b.name]));
   return Array.from(store.tasks.values())
-    .filter((t) => boardNameById.has(t.boardId) && t.assigneeEmail === email)
+    .filter((t) => boardNameById.has(t.boardId) && t.assigneeEmail === email && !t.archivedAt)
     .map((t) => ({ ...t, boardName: boardNameById.get(t.boardId)! }))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
@@ -390,7 +390,7 @@ export async function listTasksCreatedByInWorkspace(
   );
   const boardNameById = new Map(boardsInWorkspace.map((b) => [b.id, b.name]));
   return Array.from(store.tasks.values())
-    .filter((t) => boardNameById.has(t.boardId) && t.createdBy === email)
+    .filter((t) => boardNameById.has(t.boardId) && t.createdBy === email && !t.archivedAt)
     .map((t) => ({ ...t, boardName: boardNameById.get(t.boardId)! }))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
@@ -455,6 +455,7 @@ export async function createTask(input: {
     assigneeEmail: input.assigneeEmail,
     dueDate: input.dueDate,
     completedAt: null,
+    archivedAt: null,
     createdAt: now,
     updatedAt: now,
   };
@@ -464,8 +465,15 @@ export async function createTask(input: {
 
 export async function listTasksByBoard(boardId: string): Promise<Task[]> {
   return Array.from(store.tasks.values())
-    .filter((t) => t.boardId === boardId)
+    .filter((t) => t.boardId === boardId && !t.archivedAt)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+}
+
+/** Задачи, убранные в архив — отдельный список, в обычную доску они не попадают. Свежие сверху. */
+export async function listArchivedTasksByBoard(boardId: string): Promise<Task[]> {
+  return Array.from(store.tasks.values())
+    .filter((t) => t.boardId === boardId && Boolean(t.archivedAt))
+    .sort((a, b) => (a.archivedAt! < b.archivedAt! ? 1 : -1));
 }
 
 export async function getTask(taskId: string): Promise<Task | undefined> {
@@ -488,6 +496,7 @@ export async function updateTask(
       | "assigneeEmail"
       | "dueDate"
       | "completedAt"
+      | "archivedAt"
     >
   >,
 ): Promise<Task | undefined> {

@@ -80,6 +80,11 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS found_count INTEGER;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS result_note TEXT;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_by TEXT REFERENCES users(email);
 
+-- Архив задач: обратимая альтернатива удалению. Заполненный archived_at
+-- убирает задачу из обычных списков доски, но сохраняет её со всей историей.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS tasks_board_archived_idx ON tasks(board_id, archived_at);
+
 -- Когда задача в последний раз перешла в «Готово» — источник истины для
 -- недельного архивирования на длительных досках (см. lib/week.ts). Бэкфилл
 -- ниже проставляет её по updated_at для уже готовых задач, созданных до

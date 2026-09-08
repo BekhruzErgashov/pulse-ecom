@@ -115,6 +115,8 @@ export const updateTaskSchema = z.object({
   foundCount: nullableCount,
   assigneeEmail: z.string().email().nullable().optional(),
   dueDate: z.string().nullable().optional(),
+  /** true — убрать в архив, false — вернуть из архива. Саму метку времени проставляет сервер. */
+  archived: z.boolean().optional(),
 });
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 

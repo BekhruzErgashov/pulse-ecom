@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import {
+  Archive,
   CalendarClock,
   Check,
   ChevronDown,
@@ -69,6 +70,8 @@ interface TaskDialogProps {
   onCreated?: (task: Task) => void;
   onUpdated?: (task: Task) => void;
   onDeleted?: (taskId: string) => void;
+  /** Задачу убрали в архив — с доски она пропадает так же, как при удалении, но остаётся в архиве. */
+  onArchived?: (taskId: string) => void;
 }
 
 const PRIORITY_VARIANT: Record<Task["priority"], "outline" | "danger" | "urgent"> = {
@@ -179,6 +182,7 @@ export function TaskDialog({
   onCreated,
   onUpdated,
   onDeleted,
+  onArchived,
 }: TaskDialogProps) {
   const isEdit = Boolean(task);
   // Создатель (или если создатель не известен/удалён — доступно всем
@@ -446,6 +450,37 @@ export function TaskDialog({
     }
   }
 
+  /** Удаление необратимо, поэтому спрашиваем подтверждение — в отличие от архива, который всегда можно отменить. */
+  function confirmDelete() {
+    if (!task) return;
+    toast(`Удалить задачу «${task.title}»?`, {
+      description: "Восстановить не получится. Если задача может ещё понадобиться — уберите её в архив.",
+      action: { label: "Удалить", onClick: () => void handleDelete() },
+      cancel: { label: "Отмена", onClick: () => {} },
+    });
+  }
+
+  async function handleArchive() {
+    if (!task) return;
+    setPending(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: true }),
+      });
+      if (!res.ok) {
+        toast.error("Не удалось убрать задачу в архив");
+        return;
+      }
+      onArchived?.(task.id);
+      toast.success("Задача в архиве", { description: "Вернуть можно кнопкой «Архив» над доской." });
+      onOpenChange(false);
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function handleQuickSave() {
     if (!task) return;
     setQuickPending(true);
@@ -541,7 +576,9 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      {/* Чуть шире формы создания: в футере просмотра три действия слева
+          («Изменить», «В архив», «Удалить») — на max-w-lg они переносились. */}
+      <DialogContent className="max-w-xl">
         {mode === "view" ? (
           <>
             <DialogHeader>
@@ -848,13 +885,35 @@ export function TaskDialog({
             </div>
 
             <DialogFooter className="justify-between sm:justify-between">
-              {canFullyEdit ? (
-                <Button type="button" variant="ghost" onClick={() => setMode("edit")}>
-                  <Pencil className="size-3.5" /> Редактировать
-                </Button>
-              ) : (
-                <span />
-              )}
+              <div className="flex shrink-0 items-center gap-0.5">
+                {canFullyEdit && (
+                  <>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setMode("edit")}>
+                      <Pencil className="size-3.5" /> Изменить
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleArchive}
+                      disabled={pending}
+                      className="text-[var(--color-ink-soft)]"
+                    >
+                      <Archive className="size-3.5" /> В архив
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={confirmDelete}
+                      disabled={pending}
+                      className="text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]"
+                    >
+                      <Trash2 className="size-3.5" /> Удалить
+                    </Button>
+                  </>
+                )}
+              </div>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   Закрыть
@@ -904,7 +963,7 @@ export function TaskDialog({
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={handleDelete}
+                  onClick={confirmDelete}
                   disabled={pending}
                   className="text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]"
                 >
