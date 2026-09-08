@@ -576,6 +576,23 @@ export async function listMyTasksInWorkspace(
   return res.rows.map((row) => ({ ...rowToTask(row), boardName: row.board_name }));
 }
 
+/** Задачи, которые пользователь поставил сам (он автор) — зеркало listMyTasksInWorkspace, где он исполнитель. */
+export async function listTasksCreatedByInWorkspace(
+  workspaceId: string,
+  email: string,
+): Promise<TaskWithBoard[]> {
+  const pool = getPool();
+  const res = await pool.query(
+    `SELECT t.*, b.name AS board_name
+     FROM tasks t
+     JOIN boards b ON b.id = t.board_id
+     WHERE b.workspace_id = $1 AND t.created_by = $2
+     ORDER BY t.created_at DESC`,
+    [workspaceId, email],
+  );
+  return res.rows.map((row) => ({ ...rowToTask(row), boardName: row.board_name }));
+}
+
 export async function deleteBoard(boardId: string): Promise<void> {
   const pool = getPool();
   await pool.query("DELETE FROM boards WHERE id = $1", [boardId]);

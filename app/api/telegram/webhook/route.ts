@@ -25,6 +25,7 @@ import {
   type ReplyKeyboard,
 } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
+import { handleAssignedByMe, handleAssignedPage } from "@/lib/telegram-assigned";
 import {
   NEWTASK_BUTTON,
   handleNewTaskCallback,
@@ -47,6 +48,7 @@ const HELP_TEXT = [
   "<b>Команды бота «Пульс»</b>",
   "/newtask — создать задачу, не заходя в приложение: бот по шагам спросит доску, текст, исполнителя и срок (можно выбрать дату в календаре)",
   "/mytasks — мои активные задачи",
+  "/assigned — задачи, которые я поручил другим: кому, когда поставлена и какой срок",
   "/today — что горит сегодня и просрочено",
   "/questions — открытые вопросы, где я участник",
   "/unlink — отвязать этот аккаунт от бота",
@@ -58,8 +60,9 @@ const HELP_TEXT = [
 /** Постоянное меню внизу чата — открывается один раз после привязки и остаётся, пока бот не отвязан. */
 const MAIN_MENU: ReplyKeyboard = [
   [{ text: NEWTASK_BUTTON }],
-  [{ text: "📋 Мои задачи" }, { text: "🔥 Сегодня" }],
-  [{ text: "❓ Вопросы" }, { text: "❔ Помощь" }],
+  [{ text: "📋 Мои задачи" }, { text: "📤 Я поручил" }],
+  [{ text: "🔥 Сегодня" }, { text: "❓ Вопросы" }],
+  [{ text: "❔ Помощь" }],
 ];
 
 /**
@@ -235,6 +238,15 @@ async function handleCallbackQuery(callbackQuery: {
   });
   if (handledByNewTask) return;
 
+  if (data.startsWith("ag:")) {
+    const offset = Number(data.slice("ag:".length)) || 0;
+    if (message?.message_id) {
+      await handleAssignedPage(chatId, message.message_id, link.email, offset);
+    }
+    await answerCallbackQuery(callbackQuery.id);
+    return;
+  }
+
   if (data.startsWith("mt:") || data.startsWith("td:")) {
     const [mode, offsetStr] = data.split(":") as ["mt" | "td", string];
     if (message?.message_id) {
@@ -400,6 +412,10 @@ export async function POST(request: NextRequest) {
       case "/mytasks":
       case "📋 мои задачи":
         await handleMyTasks(chatId, link.email, false);
+        break;
+      case "/assigned":
+      case "📤 я поручил":
+        await handleAssignedByMe(chatId, link.email);
         break;
       case "/today":
       case "🔥 сегодня":

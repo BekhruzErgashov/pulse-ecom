@@ -53,6 +53,7 @@ export const updateBoard = impl.updateBoard;
 export const createTask = impl.createTask;
 export const listTasksByBoard = impl.listTasksByBoard;
 export const listMyTasksInWorkspace = impl.listMyTasksInWorkspace;
+export const listTasksCreatedByInWorkspace = impl.listTasksCreatedByInWorkspace;
 export const getTask = impl.getTask;
 export const updateTask = impl.updateTask;
 export const deleteTask = impl.deleteTask;

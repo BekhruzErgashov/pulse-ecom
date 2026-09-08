@@ -380,6 +380,21 @@ export async function listMyTasksInWorkspace(
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
+/** Задачи, которые пользователь поставил сам (он автор) — зеркало listMyTasksInWorkspace, где он исполнитель. */
+export async function listTasksCreatedByInWorkspace(
+  workspaceId: string,
+  email: string,
+): Promise<TaskWithBoard[]> {
+  const boardsInWorkspace = Array.from(store.boards.values()).filter(
+    (b) => b.workspaceId === workspaceId,
+  );
+  const boardNameById = new Map(boardsInWorkspace.map((b) => [b.id, b.name]));
+  return Array.from(store.tasks.values())
+    .filter((t) => boardNameById.has(t.boardId) && t.createdBy === email)
+    .map((t) => ({ ...t, boardName: boardNameById.get(t.boardId)! }))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+}
+
 export async function getBoard(boardId: string): Promise<Board | undefined> {
   return store.boards.get(boardId);
 }
