@@ -25,6 +25,12 @@ import {
   type ReplyKeyboard,
 } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
+import {
+  NEWTASK_BUTTON,
+  handleNewTaskCallback,
+  handleNewTaskText,
+  startNewTaskDialog,
+} from "@/lib/telegram-newtask";
 import { isDueToday, isOverdue } from "@/lib/task-sort";
 import type { TaskWithBoard } from "@/lib/models";
 
@@ -39,6 +45,7 @@ export const dynamic = "force-dynamic";
 
 const HELP_TEXT = [
   "<b>Команды бота «Пульс»</b>",
+  "/newtask — создать задачу, не заходя в приложение: бот по шагам спросит доску, текст, исполнителя и срок (можно выбрать дату в календаре)",
   "/mytasks — мои активные задачи",
   "/today — что горит сегодня и просрочено",
   "/questions — открытые вопросы, где я участник",
@@ -50,9 +57,17 @@ const HELP_TEXT = [
 
 /** Постоянное меню внизу чата — открывается один раз после привязки и остаётся, пока бот не отвязан. */
 const MAIN_MENU: ReplyKeyboard = [
+  [{ text: NEWTASK_BUTTON }],
   [{ text: "📋 Мои задачи" }, { text: "🔥 Сегодня" }],
   [{ text: "❓ Вопросы" }, { text: "❔ Помощь" }],
 ];
+
+/**
+ * Тексты кнопок постоянного меню — приходят как обычные сообщения. Нужны,
+ * чтобы отличить нажатие кнопки от текста, который пользователь вводит как
+ * шаг диалога /newtask (например, заголовок задачи).
+ */
+const MENU_TEXTS = new Set(MAIN_MENU.flat().map((button) => button.text.toLowerCase()));
 
 const PAGE_SIZE = 8;
 
@@ -211,6 +226,15 @@ async function handleCallbackQuery(callbackQuery: {
   const data = callbackQuery.data ?? "";
   const message = callbackQuery.message;
 
+  // Шаги пошагового создания задачи (/newtask) — включая инлайн-календарь.
+  const handledByNewTask = await handleNewTaskCallback({
+    callbackQueryId: callbackQuery.id,
+    chatId,
+    messageId: message?.message_id,
+    data,
+  });
+  if (handledByNewTask) return;
+
   if (data.startsWith("mt:") || data.startsWith("td:")) {
     const [mode, offsetStr] = data.split(":") as ["mt" | "td", string];
     if (message?.message_id) {
@@ -357,10 +381,22 @@ export async function POST(request: NextRequest) {
       if (handled) return NextResponse.json({ ok: true });
     }
 
+    // Обычный текст (не команда и не кнопка меню) может быть шагом диалога
+    // /newtask — например, заголовком задачи. Если черновика нет, обработчик
+    // вернёт false и сообщение разберётся дальше как команда.
+    if (text && !text.startsWith("/") && !MENU_TEXTS.has(text.toLowerCase())) {
+      const handledAsDraft = await handleNewTaskText(chatId, text);
+      if (handledAsDraft) return NextResponse.json({ ok: true });
+    }
+
     // Команды не чувствительны к регистру, плюс кнопки постоянного меню
     // (MAIN_MENU) присылают свой текст как обычное сообщение — распознаём
     // и то, и другое одним switch.
     switch (text.toLowerCase()) {
+      case "/newtask":
+      case "➕ новая задача":
+        await startNewTaskDialog(chatId, link.email);
+        break;
       case "/mytasks":
       case "📋 мои задачи":
         await handleMyTasks(chatId, link.email, false);

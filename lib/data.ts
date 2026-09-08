@@ -101,6 +101,12 @@ export const deleteTelegramLink = impl.deleteTelegramLink;
 export const updateTelegramNotifyPref = impl.updateTelegramNotifyPref;
 export const updateTelegramDigestHour = impl.updateTelegramDigestHour;
 
+// Telegram: черновики задач пошагового диалога /newtask
+export const startTelegramDraft = impl.startTelegramDraft;
+export const getTelegramDraft = impl.getTelegramDraft;
+export const updateTelegramDraft = impl.updateTelegramDraft;
+export const deleteTelegramDraft = impl.deleteTelegramDraft;
+
 // Google Calendar (OAuth-привязка личного календаря)
 export const setGoogleCalendarLink = impl.setGoogleCalendarLink;
 export const getGoogleCalendarLink = impl.getGoogleCalendarLink;

@@ -18,6 +18,8 @@ import type {
   TelegramLink,
   TelegramLinkToken,
   TelegramNotifyPrefKey,
+  TelegramDraft,
+  TelegramDraftStep,
   GoogleCalendarLink,
   TaskEvent,
   TaskEventType,
@@ -1301,6 +1303,132 @@ export async function listTelegramLinks(): Promise<TelegramLink[]> {
 export async function deleteTelegramLink(email: string): Promise<void> {
   const pool = getPool();
   await pool.query("DELETE FROM telegram_links WHERE email = $1", [email]);
+}
+
+// ---------- Telegram: черновики задач из /newtask ----------
+
+const TELEGRAM_DRAFT_TTL_MS = 30 * 60 * 1000;
+
+function rowToTelegramDraft(row: {
+  chat_id: string;
+  email: string;
+  step: string;
+  workspace_id: string | null;
+  board_id: string | null;
+  title: string | null;
+  assignee_email: string | null;
+  due_date: string | null;
+  calendar_message_id: string | number | null;
+  calendar_month: string | null;
+  expires_at: Date;
+  updated_at: Date;
+}): TelegramDraft {
+  return {
+    chatId: row.chat_id,
+    email: row.email,
+    step: row.step as TelegramDraftStep,
+    workspaceId: row.workspace_id,
+    boardId: row.board_id,
+    title: row.title,
+    assigneeEmail: row.assignee_email,
+    dueDate: row.due_date,
+    // BIGINT приходит из pg строкой — приводим к числу, Telegram message_id
+    // помещается в Number без потерь.
+    calendarMessageId: row.calendar_message_id === null ? null : Number(row.calendar_message_id),
+    calendarMonth: row.calendar_month,
+    expiresAt: row.expires_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+}
+
+/** Начинает новый диалог создания задачи, затирая незаконченный предыдущий в этом же чате. */
+export async function startTelegramDraft(input: {
+  chatId: string;
+  email: string;
+  step: TelegramDraftStep;
+  workspaceId?: string | null;
+  boardId?: string | null;
+}): Promise<TelegramDraft> {
+  const pool = getPool();
+  const expiresAt = new Date(Date.now() + TELEGRAM_DRAFT_TTL_MS).toISOString();
+  const res = await pool.query(
+    `INSERT INTO telegram_drafts (chat_id, email, step, workspace_id, board_id, title, assignee_email, due_date, calendar_message_id, calendar_month, expires_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL, NULL, $6, now())
+     ON CONFLICT (chat_id) DO UPDATE SET
+       email = EXCLUDED.email,
+       step = EXCLUDED.step,
+       workspace_id = EXCLUDED.workspace_id,
+       board_id = EXCLUDED.board_id,
+       title = NULL,
+       assignee_email = NULL,
+       due_date = NULL,
+       calendar_message_id = NULL,
+       calendar_month = NULL,
+       expires_at = EXCLUDED.expires_at,
+       updated_at = now()
+     RETURNING *`,
+    [input.chatId, input.email, input.step, input.workspaceId ?? null, input.boardId ?? null, expiresAt],
+  );
+  return rowToTelegramDraft(res.rows[0]);
+}
+
+/** Возвращает активный черновик чата; протухший считается отсутствующим и сразу удаляется. */
+export async function getTelegramDraft(chatId: string): Promise<TelegramDraft | undefined> {
+  const pool = getPool();
+  const res = await pool.query("SELECT * FROM telegram_drafts WHERE chat_id = $1", [chatId]);
+  if (res.rowCount === 0) return undefined;
+  const draft = rowToTelegramDraft(res.rows[0]);
+  if (new Date(draft.expiresAt).getTime() < Date.now()) {
+    await pool.query("DELETE FROM telegram_drafts WHERE chat_id = $1", [chatId]);
+    return undefined;
+  }
+  return draft;
+}
+
+const DRAFT_COLUMN: Record<string, string> = {
+  step: "step",
+  workspaceId: "workspace_id",
+  boardId: "board_id",
+  title: "title",
+  assigneeEmail: "assignee_email",
+  dueDate: "due_date",
+  calendarMessageId: "calendar_message_id",
+  calendarMonth: "calendar_month",
+};
+
+/** Обновляет поля черновика и продлевает TTL — каждый шаг диалога отодвигает протухание. */
+export async function updateTelegramDraft(
+  chatId: string,
+  patch: Partial<Pick<TelegramDraft, "step" | "workspaceId" | "boardId" | "title" | "assigneeEmail" | "dueDate" | "calendarMessageId" | "calendarMonth">>,
+): Promise<TelegramDraft | undefined> {
+  const existing = await getTelegramDraft(chatId);
+  if (!existing) return undefined;
+
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const [key, value] of Object.entries(patch)) {
+    const column = DRAFT_COLUMN[key];
+    if (!column) continue;
+    values.push(value ?? null);
+    sets.push(`${column} = $${values.length}`);
+  }
+  values.push(new Date(Date.now() + TELEGRAM_DRAFT_TTL_MS).toISOString());
+  sets.push(`expires_at = $${values.length}`);
+  sets.push("updated_at = now()");
+  values.push(chatId);
+
+  const pool = getPool();
+  const res = await pool.query(
+    `UPDATE telegram_drafts SET ${sets.join(", ")} WHERE chat_id = $${values.length} RETURNING *`,
+    values,
+  );
+  if (res.rowCount === 0) return undefined;
+  return rowToTelegramDraft(res.rows[0]);
+}
+
+export async function deleteTelegramDraft(chatId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM telegram_drafts WHERE chat_id = $1", [chatId]);
 }
 
 // ---------- Google Calendar (OAuth-привязка личного календаря) ----------

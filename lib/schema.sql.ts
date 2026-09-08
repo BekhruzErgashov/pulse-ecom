@@ -202,6 +202,25 @@ CREATE TABLE IF NOT EXISTS telegram_link_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Черновик задачи, которую пользователь собирает пошагово в Telegram
+-- (/newtask). Состояние диалога нельзя держать в памяти процесса: на Vercel
+-- каждый апдейт бота может обработать свой экземпляр serverless-функции.
+-- Одна активная запись на чат, протухшие чистятся при следующем /newtask.
+CREATE TABLE IF NOT EXISTS telegram_drafts (
+  chat_id TEXT PRIMARY KEY,
+  email TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+  step TEXT NOT NULL,
+  workspace_id TEXT,
+  board_id TEXT,
+  title TEXT,
+  assignee_email TEXT,
+  due_date TEXT,
+  calendar_message_id BIGINT,
+  calendar_month TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Комментарии и автолог изменений задачи (единая хронологическая лента,
 -- как в issue-трекерах — комментарии и системные записи вперемешку).
 CREATE TABLE IF NOT EXISTS task_events (

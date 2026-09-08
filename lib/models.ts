@@ -180,6 +180,43 @@ export interface TelegramLinkToken {
 }
 
 /**
+ * Шаг пошагового диалога создания задачи в Telegram (`/newtask`).
+ * `workspace`/`board` пропускаются, если у пользователя одно пространство
+ * и/или одна доска в нём.
+ */
+export type TelegramDraftStep =
+  | "workspace"
+  | "board"
+  | "title"
+  | "assignee"
+  | "due"
+  | "calendar";
+
+/**
+ * Черновик задачи, создаваемой через бота. Живёт в хранилище, а не в памяти
+ * процесса: на Vercel каждый апдейт Telegram может попасть в свой экземпляр
+ * serverless-функции, и состояние диалога между шагами иначе теряется.
+ * Одна активная запись на чат; протухшие (`expiresAt`) игнорируются и
+ * перезаписываются при следующем /newtask.
+ */
+export interface TelegramDraft {
+  chatId: string;
+  email: string;
+  step: TelegramDraftStep;
+  workspaceId: string | null;
+  boardId: string | null;
+  title: string | null;
+  assigneeEmail: string | null;
+  dueDate: string | null;
+  /** message_id сообщения с инлайн-календарём — чтобы редактировать его, а не слать новое на каждый переход по месяцам. */
+  calendarMessageId: number | null;
+  /** Месяц, показанный в календаре сейчас, в формате YYYY-MM. */
+  calendarMonth: string | null;
+  expiresAt: string;
+  updatedAt: string;
+}
+
+/**
  * OAuth-привязка личного Google-календаря пользователя — один аккаунт
  * Google на пользователя приложения. `refreshToken` используется, чтобы
  * молча получать новый `accessToken`, когда старый истёк (`expiryDate`).

@@ -1,6 +1,7 @@
 import { config } from "dotenv";
 import { existsSync } from "fs";
 import { resolve } from "path";
+import { BOT_COMMANDS } from "../lib/telegram-commands";
 
 // dotenv по умолчанию грузит только .env — а Next.js использует .env.local.
 // Подхватываем оба, приоритет у .env.local (как и в самом Next.js).
@@ -63,15 +64,7 @@ async function main() {
   const commandsRes = await fetch(`https://api.telegram.org/bot${token}/setMyCommands`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      commands: [
-        { command: "today", description: "Горит сегодня / просрочено" },
-        { command: "mytasks", description: "Мои активные задачи" },
-        { command: "questions", description: "Открытые вопросы" },
-        { command: "unlink", description: "Отвязать аккаунт" },
-        { command: "help", description: "Список команд" },
-      ],
-    }),
+    body: JSON.stringify({ commands: BOT_COMMANDS }),
   });
   const commandsData = await commandsRes.json();
   if (!commandsData.ok) {

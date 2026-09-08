@@ -64,6 +64,13 @@ export async function PATCH(
 
   const previousAssignee = existing?.assigneeEmail ?? null;
 
+  // Снимок значений «до». In-memory store (lib/store-memory.ts) отдаёт живой
+  // объект задачи и мутирует его внутри updateTask — без копии `existing` и
+  // `task` оказались бы одной ссылкой, и ни смена этапа, ни смена приоритета
+  // ниже не определялись бы (уведомления и автолог молча не срабатывали).
+  // В Postgres-режиме store возвращает отдельные строки, там разницы нет.
+  const before = existing ? { ...existing } : undefined;
+
   // completedAt — источник истины для недельного архивирования «Готово»
   // (см. lib/week.ts). Выставляется только здесь, на сервере, при реальной
   // смене этапа — клиент не может передать его напрямую (нет в схеме).
@@ -81,19 +88,19 @@ export async function PATCH(
 
   // Автолог изменений — те же события потом показываются в ленте задачи
   // (комментарии + история вперемешку, см. /api/tasks/[id]/events).
-  if (existing) {
+  if (before) {
     const diffs: { type: TaskEventType; from: string | null; to: string | null }[] = [];
-    if ("stage" in parsed.data && task.stage !== existing.stage) {
-      diffs.push({ type: "stage_changed", from: existing.stage, to: task.stage });
+    if ("stage" in parsed.data && task.stage !== before.stage) {
+      diffs.push({ type: "stage_changed", from: before.stage, to: task.stage });
     }
-    if ("priority" in parsed.data && task.priority !== existing.priority) {
-      diffs.push({ type: "priority_changed", from: existing.priority, to: task.priority });
+    if ("priority" in parsed.data && task.priority !== before.priority) {
+      diffs.push({ type: "priority_changed", from: before.priority, to: task.priority });
     }
-    if ("assigneeEmail" in parsed.data && task.assigneeEmail !== existing.assigneeEmail) {
-      diffs.push({ type: "assignee_changed", from: existing.assigneeEmail, to: task.assigneeEmail });
+    if ("assigneeEmail" in parsed.data && task.assigneeEmail !== before.assigneeEmail) {
+      diffs.push({ type: "assignee_changed", from: before.assigneeEmail, to: task.assigneeEmail });
     }
-    if ("dueDate" in parsed.data && task.dueDate !== existing.dueDate) {
-      diffs.push({ type: "due_date_changed", from: existing.dueDate, to: task.dueDate });
+    if ("dueDate" in parsed.data && task.dueDate !== before.dueDate) {
+      diffs.push({ type: "due_date_changed", from: before.dueDate, to: task.dueDate });
     }
     for (const diff of diffs) {
       after(() =>
@@ -146,9 +153,9 @@ export async function PATCH(
   // Смена этапа — сообщаем постановщику задачи (если менял не он сам): так
   // он узнаёт, что задача пришла «на проверку» или готова, не открывая доску.
   if (
-    existing &&
+    before &&
     "stage" in parsed.data &&
-    task.stage !== existing.stage &&
+    task.stage !== before.stage &&
     task.createdBy &&
     task.createdBy !== user.email
   ) {
@@ -159,9 +166,37 @@ export async function PATCH(
           userEmail: task.createdBy!,
           type: "task_stage_changed",
           title: `Этап изменён: ${task.title}`,
-          body: `${stageLabel(existing.stage)} → ${stageLabel(task.stage)} (${user.name})`,
+          body: `${stageLabel(before.stage)} → ${stageLabel(task.stage)} (${user.name})`,
           link: `/w/${board.workspaceId}/boards/${board.id}`,
-          telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(existing.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
+          telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
+          telegramKeyboard: [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
+          prefKey: "notifyStageChanges",
+        }),
+      );
+    }
+  }
+
+  // Та же смена этапа — исполнителю, если этап поменял не он сам. Постановщик
+  // уже получил уведомление выше; когда он же и исполнитель, второе сообщение
+  // об одном событии не отправляем.
+  if (
+    before &&
+    "stage" in parsed.data &&
+    task.stage !== before.stage &&
+    task.assigneeEmail &&
+    task.assigneeEmail !== user.email &&
+    task.assigneeEmail !== task.createdBy
+  ) {
+    const board = await getBoard(task.boardId);
+    if (board) {
+      after(() =>
+        notify({
+          userEmail: task.assigneeEmail!,
+          type: "task_stage_changed",
+          title: `Этап изменён: ${task.title}`,
+          body: `${stageLabel(before.stage)} → ${stageLabel(task.stage)} (${user.name})`,
+          link: `/w/${board.workspaceId}/boards/${board.id}`,
+          telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап вашей задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
           telegramKeyboard: [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
           prefKey: "notifyStageChanges",
         }),

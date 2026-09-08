@@ -1,5 +1,6 @@
 import "server-only";
 import { getTelegramLinkByEmail } from "@/lib/data";
+import { BOT_COMMANDS } from "@/lib/telegram-commands";
 
 /**
  * Токен бота задаётся ТОЛЬКО переменной окружения TELEGRAM_BOT_TOKEN —
@@ -117,15 +118,7 @@ export async function sendMessage(
  * достаточно один раз после деплоя, вызывается из scripts/set-telegram-webhook.ts.
  */
 export async function setMyCommands(): Promise<void> {
-  await callTelegramApi("setMyCommands", {
-    commands: [
-      { command: "today", description: "Горит сегодня / просрочено" },
-      { command: "mytasks", description: "Мои активные задачи" },
-      { command: "questions", description: "Открытые вопросы" },
-      { command: "unlink", description: "Отвязать аккаунт" },
-      { command: "help", description: "Список команд" },
-    ],
-  });
+  await callTelegramApi("setMyCommands", { commands: BOT_COMMANDS });
 }
 
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {

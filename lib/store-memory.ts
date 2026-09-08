@@ -18,6 +18,8 @@ import type {
   TelegramLink,
   TelegramLinkToken,
   TelegramNotifyPrefKey,
+  TelegramDraft,
+  TelegramDraftStep,
   GoogleCalendarLink,
   TaskEvent,
   TaskEventType,
@@ -44,6 +46,7 @@ interface Store {
   workLinks: Map<string, WorkLink>;
   telegramLinks: Map<string, TelegramLink>; // email -> link
   telegramLinkTokens: Map<string, TelegramLinkToken>; // token -> token record
+  telegramDrafts: Map<string, TelegramDraft>; // chatId -> черновик задачи из /newtask
   googleCalendarLinks: Map<string, GoogleCalendarLink>; // email -> link
   taskEvents: Map<string, TaskEvent>;
   notifications: Map<string, Notification>;
@@ -71,6 +74,7 @@ function createStore(): Store {
     workLinks: new Map(),
     telegramLinks: new Map(),
     telegramLinkTokens: new Map(),
+    telegramDrafts: new Map(),
     googleCalendarLinks: new Map(),
     taskEvents: new Map(),
     notifications: new Map(),
@@ -890,6 +894,72 @@ export async function updateTelegramDigestHour(
   if (!link) return undefined;
   link.digestHourUtc = Math.min(23, Math.max(0, Math.round(hourUtc)));
   return link;
+}
+
+// ---------- Telegram: черновики задач из /newtask ----------
+
+const TELEGRAM_DRAFT_TTL_MS = 30 * 60 * 1000;
+
+function draftExpiry(): string {
+  return new Date(Date.now() + TELEGRAM_DRAFT_TTL_MS).toISOString();
+}
+
+/** Начинает новый диалог создания задачи, затирая незаконченный предыдущий в этом же чате. */
+export async function startTelegramDraft(input: {
+  chatId: string;
+  email: string;
+  step: TelegramDraftStep;
+  workspaceId?: string | null;
+  boardId?: string | null;
+}): Promise<TelegramDraft> {
+  const draft: TelegramDraft = {
+    chatId: input.chatId,
+    email: input.email,
+    step: input.step,
+    workspaceId: input.workspaceId ?? null,
+    boardId: input.boardId ?? null,
+    title: null,
+    assigneeEmail: null,
+    dueDate: null,
+    calendarMessageId: null,
+    calendarMonth: null,
+    expiresAt: draftExpiry(),
+    updatedAt: new Date().toISOString(),
+  };
+  store.telegramDrafts.set(input.chatId, draft);
+  return draft;
+}
+
+/** Возвращает активный черновик чата; протухший считается отсутствующим и сразу удаляется. */
+export async function getTelegramDraft(chatId: string): Promise<TelegramDraft | undefined> {
+  const draft = store.telegramDrafts.get(chatId);
+  if (!draft) return undefined;
+  if (new Date(draft.expiresAt).getTime() < Date.now()) {
+    store.telegramDrafts.delete(chatId);
+    return undefined;
+  }
+  return draft;
+}
+
+/** Обновляет поля черновика и продлевает TTL — каждый шаг диалога отодвигает протухание. */
+export async function updateTelegramDraft(
+  chatId: string,
+  patch: Partial<Pick<TelegramDraft, "step" | "workspaceId" | "boardId" | "title" | "assigneeEmail" | "dueDate" | "calendarMessageId" | "calendarMonth">>,
+): Promise<TelegramDraft | undefined> {
+  const draft = await getTelegramDraft(chatId);
+  if (!draft) return undefined;
+  const next: TelegramDraft = {
+    ...draft,
+    ...patch,
+    expiresAt: draftExpiry(),
+    updatedAt: new Date().toISOString(),
+  };
+  store.telegramDrafts.set(chatId, next);
+  return next;
+}
+
+export async function deleteTelegramDraft(chatId: string): Promise<void> {
+  store.telegramDrafts.delete(chatId);
 }
 
 // ---------- Google Calendar (OAuth-привязка личного календаря) ----------
