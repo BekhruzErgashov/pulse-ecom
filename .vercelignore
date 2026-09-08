@@ -1,0 +1,9 @@
+# Что не отправляется в Vercel при деплое из CLI (npx vercel --prod).
+# Секреты живут в Environment Variables проекта, а не в загружаемых файлах.
+.env
+.env.*
+!.env.example
+.git
+.idea
+node_modules
+.next
