@@ -1,8 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
-import { Inbox, Search, SearchX } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CalendarDays,
+  CheckCircle2,
+  Inbox,
+  Search,
+  SearchX,
+} from "lucide-react";
 import { StageRail } from "@/components/stage-rail";
 import { StatusFilterDropdown, type StatusFilterValue } from "@/components/status-filter-dropdown";
 import { TaskCard } from "@/components/task-card";
@@ -11,18 +18,12 @@ import { TodaySidebar } from "@/components/today-sidebar";
 import { WeekPicker } from "@/components/week-picker";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { STAGES, type StageId } from "@/lib/schema";
-import { compareTasks } from "@/lib/task-sort";
+import type { StageId } from "@/lib/schema";
+import { compareTasks, isDueToday, isOverdue } from "@/lib/task-sort";
 import { ALL_WEEKS, getCurrentWeekKey } from "@/lib/week";
 import type { Task, TaskWithBoard, User } from "@/lib/models";
 import { cn } from "@/lib/utils";
 
-const STAGE_ACCENT: Record<StageId, string> = {
-  todo: "var(--color-stage-todo)",
-  in_progress: "var(--color-stage-progress)",
-  review: "var(--color-stage-review)",
-  done: "var(--color-stage-done)",
-};
 
 /**
  * Сводная доска «Мои задачи» — то же самое дерево задач, что и на
@@ -55,8 +56,7 @@ export function MyTasksBoard({
   const [editingTask, setEditingTask] = React.useState<TaskWithBoard | undefined>(() =>
     initialOpenTaskId ? initialTasks.find((t) => t.id === initialOpenTaskId) : undefined,
   );
-  const [dragOverStage, setDragOverStage] = React.useState<StageId | null>(null);
-  const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  // Ссылка нужна фоновому опросу: он не дёргает сервер, пока открыт диалог.
   const [search, setSearch] = React.useState("");
   const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all");
   const [stageFilter, setStageFilter] = React.useState<StatusFilterValue>("all");
@@ -78,13 +78,9 @@ export function MyTasksBoard({
   }, []);
 
   const dialogOpenRef = React.useRef(dialogOpen);
-  const draggingIdRef = React.useRef(draggingId);
   React.useEffect(() => {
     dialogOpenRef.current = dialogOpen;
   }, [dialogOpen]);
-  React.useEffect(() => {
-    draggingIdRef.current = draggingId;
-  }, [draggingId]);
 
   // Отмечаем «Мои задачи» как просмотренные — по этой метке шапка понимает,
   // что новых изменений с прошлого визита не появилось.
@@ -101,7 +97,7 @@ export function MyTasksBoard({
     let cancelled = false;
 
     async function poll() {
-      if (document.hidden || dialogOpenRef.current || draggingIdRef.current) return;
+      if (document.hidden || dialogOpenRef.current) return;
       try {
         const res = await fetch(`/api/tasks/mine?workspaceId=${workspaceId}&doneWeek=${doneWeekRef.current}`);
         if (res.ok && !cancelled) {
@@ -218,30 +214,59 @@ export function MyTasksBoard({
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
   }
 
-  async function moveTask(taskId: string, stage: StageId) {
-    const previous = tasks;
-    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, stage } : t)));
-    const res = await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage }),
-    });
-    if (!res.ok) {
-      setTasks(previous);
-      toast.error("Не удалось перенести задачу");
-    }
-  }
 
-  function handleDrop(e: React.DragEvent, stage: StageId) {
-    e.preventDefault();
-    setDragOverStage(null);
-    const taskId = e.dataTransfer.getData("text/task-id");
-    setDraggingId(null);
-    const task = tasks.find((t) => t.id === taskId);
-    if (task && task.stage !== stage) {
-      moveTask(taskId, stage);
-    }
-  }
+
+  /**
+   * «Мои задачи» группируются не по этапам, а по срочности: человеку важно
+   * «что горит», а не «в какой колонке лежит». Готовые вынесены в конец
+   * отдельной группой — они уже никуда не торопят.
+   */
+  const now = new Date();
+  const groups = React.useMemo(() => {
+    const open = visibleTasks.filter((t) => t.stage !== "done");
+    const done = visibleTasks.filter((t) => t.stage === "done");
+    const overdue = open.filter((t) => isOverdue(t, now));
+    const today = open.filter((t) => isDueToday(t, now));
+    const rest = open.filter((t) => !isOverdue(t, now) && !isDueToday(t, now));
+    return [
+      {
+        id: "overdue",
+        label: "Просрочено",
+        icon: AlertTriangle,
+        tone: "text-[var(--color-danger)]",
+        tasks: overdue.sort(compareTasks),
+      },
+      {
+        id: "today",
+        label: "Сегодня",
+        icon: CalendarClock,
+        tone: "text-[var(--color-ink)]",
+        tasks: today.sort(compareTasks),
+      },
+      {
+        id: "soon",
+        label: "Скоро",
+        icon: CalendarDays,
+        tone: "text-[var(--color-ink)]",
+        tasks: rest.filter((t) => t.dueDate).sort(compareTasks),
+      },
+      {
+        id: "nodue",
+        label: "Без срока",
+        icon: Inbox,
+        tone: "text-[var(--color-ink)]",
+        tasks: rest.filter((t) => !t.dueDate).sort(compareTasks),
+      },
+      {
+        id: "done",
+        label: "Готово",
+        icon: CheckCircle2,
+        tone: "text-[var(--color-stage-done)]",
+        tasks: done.sort(compareTasks),
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleTasks]);
 
   return (
     <div>
@@ -286,69 +311,51 @@ export function MyTasksBoard({
               <span className="text-sm text-[var(--color-ink-soft)]">Ничего не найдено</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {STAGES.map((stage) => {
-                const stageTasks = visibleTasks.filter((t) => t.stage === stage.id).sort(compareTasks);
-                const isOver = dragOverStage === stage.id;
+            <div className="flex flex-col gap-4">
+              {groups.map((group) => {
+                const Icon = group.icon;
                 return (
-                  <div
-                    key={stage.id}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDragOverStage(stage.id);
-                    }}
-                    onDragLeave={() => setDragOverStage((s) => (s === stage.id ? null : s))}
-                    onDrop={(e) => handleDrop(e, stage.id)}
-                    className={cn(
-                      "flex flex-col gap-3 rounded-(--radius-card) border border-dashed border-transparent p-2 transition-colors",
-                      isOver && "border-[var(--color-signal)] bg-[var(--color-signal-soft)]/40",
-                    )}
+                  <section
+                    key={group.id}
+                    className="rounded-(--radius-card) border border-[var(--color-line)] bg-[var(--color-paper-raised)]/60 p-4"
                   >
-                    <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="size-1.5 rounded-full"
-                          style={{ backgroundColor: STAGE_ACCENT[stage.id] }}
-                        />
-                        <span className="text-sm font-medium">{stage.label}</span>
-                        <span className="font-mono text-xs text-[var(--color-ink-soft)]">
-                          {stageTasks.length}
-                        </span>
-                      </div>
-                      {stage.id === "done" && (stageFilter === "all" || stageFilter === "closed") && (
-                        <WeekPicker value={doneWeek} weeks={doneWeeks} onChange={setDoneWeek} />
-                      )}
+                    <div className="mb-3 flex items-center gap-2">
+                      <Icon className={cn("size-4", group.tone)} />
+                      <h2 className={cn("text-base font-semibold", group.tone)}>{group.label}</h2>
+                      <span className="rounded-full bg-[var(--color-paper)] px-2 py-0.5 font-mono text-xs text-[var(--color-ink-soft)]">
+                        {group.tasks.length}
+                      </span>
+                      {group.id === "done" &&
+                        (stageFilter === "all" || stageFilter === "closed") && (
+                          <span className="ml-auto">
+                            <WeekPicker value={doneWeek} weeks={doneWeeks} onChange={setDoneWeek} />
+                          </span>
+                        )}
                     </div>
 
-                    <div className="flex min-h-24 flex-col gap-2">
-                      {stageTasks.length === 0 ? (
-                        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-(--radius-card) border border-dashed border-[var(--color-line)] py-6 text-center">
-                          <Inbox className="size-4 text-[var(--color-ink-soft)]" />
-                          <span className="text-xs text-[var(--color-ink-soft)]">
-                            {filtersActive ? "Нет подходящих задач" : "Пусто"}
-                          </span>
-                        </div>
-                      ) : (
-                        stageTasks.map((task) => (
-                          <div key={task.id} className={cn(draggingId === task.id && "opacity-40")}>
-                            <TaskCard
-                              task={task}
-                              boardName={task.boardName}
-                              assignees={task.assigneeEmails.map((e) => usersByEmail.get(e)).filter((u): u is User => Boolean(u))}
-                              onOpen={() => openEdit(task)}
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData("text/task-id", task.id);
-                                setDraggingId(task.id);
-                              }}
-                              onDragEnd={() => setDraggingId(null)}
-                              showCompletedWeek={stage.id === "done" && doneWeek === ALL_WEEKS}
-                            />
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+                    {group.tasks.length === 0 ? (
+                      <p className="text-sm text-[var(--color-ink-soft)]">
+                        {filtersActive ? "Нет подходящих задач" : "Пусто"}
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                        {group.tasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            boardName={task.boardName}
+                            assignees={task.assigneeEmails
+                              .map((e) => usersByEmail.get(e))
+                              .filter((u): u is User => Boolean(u))}
+                            onOpen={() => openEdit(task)}
+                            draggable={false}
+                            onDragStart={() => {}}
+                            showCompletedWeek={group.id === "done" && doneWeek === ALL_WEEKS}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </section>
                 );
               })}
             </div>
