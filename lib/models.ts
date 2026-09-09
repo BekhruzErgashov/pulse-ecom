@@ -190,6 +190,9 @@ export type TelegramDraftStep =
   | "workspace"
   | "board"
   | "title"
+  | "description"
+  | "kind"
+  | "priority"
   | "assignee"
   | "due"
   | "calendar";
@@ -208,6 +211,9 @@ export interface TelegramDraft {
   workspaceId: string | null;
   boardId: string | null;
   title: string | null;
+  description: string | null;
+  kind: TaskKindId | null;
+  priority: PriorityId | null;
   assigneeEmail: string | null;
   dueDate: string | null;
   /** message_id сообщения с инлайн-календарём — чтобы редактировать его, а не слать новое на каждый переход по месяцам. */

@@ -943,6 +943,9 @@ export async function startTelegramDraft(input: {
     workspaceId: input.workspaceId ?? null,
     boardId: input.boardId ?? null,
     title: null,
+    description: null,
+    kind: null,
+    priority: null,
     assigneeEmail: null,
     dueDate: null,
     calendarMessageId: null,
@@ -968,7 +971,22 @@ export async function getTelegramDraft(chatId: string): Promise<TelegramDraft | 
 /** Обновляет поля черновика и продлевает TTL — каждый шаг диалога отодвигает протухание. */
 export async function updateTelegramDraft(
   chatId: string,
-  patch: Partial<Pick<TelegramDraft, "step" | "workspaceId" | "boardId" | "title" | "assigneeEmail" | "dueDate" | "calendarMessageId" | "calendarMonth">>,
+  patch: Partial<
+    Pick<
+      TelegramDraft,
+      | "step"
+      | "workspaceId"
+      | "boardId"
+      | "title"
+      | "description"
+      | "kind"
+      | "priority"
+      | "assigneeEmail"
+      | "dueDate"
+      | "calendarMessageId"
+      | "calendarMonth"
+    >
+  >,
 ): Promise<TelegramDraft | undefined> {
   const draft = await getTelegramDraft(chatId);
   if (!draft) return undefined;

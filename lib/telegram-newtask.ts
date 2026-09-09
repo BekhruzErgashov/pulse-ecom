@@ -21,6 +21,7 @@ import {
   type InlineButton,
 } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
+import { PRIORITIES, TASK_KINDS } from "@/lib/schema";
 import type { TelegramDraft } from "@/lib/models";
 
 /**
@@ -35,6 +36,9 @@ import type { TelegramDraft } from "@/lib/models";
  * Префиксы callback_data этого диалога:
  *   nt_ws:<workspaceId>   — выбор пространства
  *   nt_bd:<boardId>       — выбор доски
+ *   nt_desc:skip          — пропустить описание
+ *   nt_kind:<id>          — вид задачи
+ *   nt_prio:<id>          — приоритет
  *   nt_as:self|none|<i>   — выбор исполнителя (i — индекс в отсортированном
  *                           списке участников: email в callback_data может
  *                           не поместиться в лимит Telegram в 64 байта)
@@ -166,6 +170,52 @@ async function promptTitle(
     messageId,
     `<b>Новая задача</b>\nДоска: ${escapeHtml(board?.name ?? "—")}\n\nПришлите текст задачи одним сообщением.`,
     [CANCEL_ROW],
+  );
+}
+
+async function promptDescription(
+  chatId: string,
+  draft: TelegramDraft,
+  messageId: number | undefined,
+): Promise<void> {
+  await show(
+    chatId,
+    messageId,
+    `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nПришлите описание одним сообщением — или пропустите этот шаг.`,
+    [[{ text: "Пропустить", callback_data: "nt_desc:skip" }], CANCEL_ROW],
+  );
+}
+
+async function promptKind(
+  chatId: string,
+  draft: TelegramDraft,
+  messageId: number | undefined,
+): Promise<void> {
+  await show(
+    chatId,
+    messageId,
+    `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nКакой вид задачи?`,
+    [...TASK_KINDS.map((kind) => [{ text: kind.label, callback_data: `nt_kind:${kind.id}` }]), CANCEL_ROW],
+  );
+}
+
+async function promptPriority(
+  chatId: string,
+  draft: TelegramDraft,
+  messageId: number | undefined,
+): Promise<void> {
+  // Приоритеты по двое в ряд — четыре кнопки в столбик занимали бы пол-экрана.
+  const rows: InlineButton[][] = [];
+  for (let i = 0; i < PRIORITIES.length; i += 2) {
+    rows.push(
+      PRIORITIES.slice(i, i + 2).map((p) => ({ text: p.label, callback_data: `nt_prio:${p.id}` })),
+    );
+  }
+  await show(
+    chatId,
+    messageId,
+    `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nКакой приоритет?`,
+    [...rows, CANCEL_ROW],
   );
 }
 
@@ -320,8 +370,9 @@ async function finishDraft(
   const task = await createTask({
     boardId: board.id,
     title: draft.title!,
-    description: "",
-    priority: "medium",
+    description: draft.description ?? "",
+    priority: draft.priority ?? "medium",
+    kind: draft.kind ?? "normal",
     assigneeEmail: draft.assigneeEmail,
     dueDate: draft.dueDate,
     createdBy: draft.email,
@@ -355,6 +406,9 @@ async function finishDraft(
     ? ((await getUserByEmail(task.assigneeEmail))?.name ?? task.assigneeEmail)
     : "не назначен";
 
+  const kindLabel = TASK_KINDS.find((k) => k.id === task.kind)?.label ?? task.kind;
+  const priorityLabel = PRIORITIES.find((p) => p.id === task.priority)?.label ?? task.priority;
+
   await show(
     chatId,
     messageId,
@@ -362,7 +416,10 @@ async function finishDraft(
       "✅ <b>Задача создана</b>",
       "",
       `<b>${escapeHtml(task.title)}</b>`,
+      ...(task.description ? [escapeHtml(task.description)] : []),
+      "",
       `Доска: ${escapeHtml(board.name)}`,
+      `Вид: ${escapeHtml(kindLabel)} · Приоритет: ${escapeHtml(priorityLabel)}`,
       `Исполнитель: ${escapeHtml(assigneeLabel)}`,
       `Срок: ${formatDue(task.dueDate)}`,
     ].join("\n"),
@@ -379,17 +436,33 @@ async function finishDraft(
  */
 export async function handleNewTaskText(chatId: string, text: string): Promise<boolean> {
   const draft = await getTelegramDraft(chatId);
-  if (!draft || draft.step !== "title") return false;
+  if (!draft) return false;
 
-  const title = text.trim();
-  if (title.length < 3) {
-    await sendMessage(chatId, "Слишком короткий текст — напишите задачу подробнее (от 3 символов).");
+  if (draft.step === "title") {
+    const title = text.trim();
+    if (title.length < 3) {
+      await sendMessage(chatId, "Слишком короткий текст — напишите задачу подробнее (от 3 символов).");
+      return true;
+    }
+    const next = await updateTelegramDraft(chatId, {
+      step: "description",
+      title: title.slice(0, 200),
+    });
+    if (next) await promptDescription(chatId, next, undefined);
     return true;
   }
 
-  const next = await updateTelegramDraft(chatId, { step: "assignee", title: title.slice(0, 200) });
-  if (next) await promptAssignee(chatId, next, undefined);
-  return true;
+  if (draft.step === "description") {
+    const next = await updateTelegramDraft(chatId, {
+      step: "kind",
+      // 2000 — тот же предел, что и у описания в форме приложения (lib/validation.ts).
+      description: text.trim().slice(0, 2000),
+    });
+    if (next) await promptKind(chatId, next, undefined);
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -408,6 +481,9 @@ export async function handleNewTaskCallback(input: {
     data === "nt_noop" ||
     data.startsWith("nt_ws:") ||
     data.startsWith("nt_bd:") ||
+    data.startsWith("nt_desc:") ||
+    data.startsWith("nt_kind:") ||
+    data.startsWith("nt_prio:") ||
     data.startsWith("nt_as:") ||
     data.startsWith("nt_due:") ||
     data.startsWith("cal:") ||
@@ -445,6 +521,29 @@ export async function handleNewTaskCallback(input: {
     const next = await updateTelegramDraft(chatId, { step: "title", boardId });
     await answerCallbackQuery(callbackQueryId);
     if (next) await promptTitle(chatId, next, messageId);
+    return true;
+  }
+
+  if (data === "nt_desc:skip") {
+    const next = await updateTelegramDraft(chatId, { step: "kind", description: null });
+    await answerCallbackQuery(callbackQueryId);
+    if (next) await promptKind(chatId, next, messageId);
+    return true;
+  }
+
+  if (data.startsWith("nt_kind:")) {
+    const kind = data.slice("nt_kind:".length) as TelegramDraft["kind"];
+    const next = await updateTelegramDraft(chatId, { step: "priority", kind });
+    await answerCallbackQuery(callbackQueryId);
+    if (next) await promptPriority(chatId, next, messageId);
+    return true;
+  }
+
+  if (data.startsWith("nt_prio:")) {
+    const priority = data.slice("nt_prio:".length) as TelegramDraft["priority"];
+    const next = await updateTelegramDraft(chatId, { step: "assignee", priority });
+    await answerCallbackQuery(callbackQueryId);
+    if (next) await promptAssignee(chatId, next, messageId);
     return true;
   }
 

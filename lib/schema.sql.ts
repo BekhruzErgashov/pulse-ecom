@@ -228,6 +228,11 @@ CREATE TABLE IF NOT EXISTS telegram_drafts (
 
 -- Комментарии и автолог изменений задачи (единая хронологическая лента,
 -- как в issue-трекерах — комментарии и системные записи вперемешку).
+-- Поля, добавленные к пошаговому созданию задачи в боте позже самой таблицы.
+ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS kind TEXT;
+ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS priority TEXT;
+
 CREATE TABLE IF NOT EXISTS task_events (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

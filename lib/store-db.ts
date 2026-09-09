@@ -1348,6 +1348,9 @@ function rowToTelegramDraft(row: {
   workspace_id: string | null;
   board_id: string | null;
   title: string | null;
+  description: string | null;
+  kind: string | null;
+  priority: string | null;
   assignee_email: string | null;
   due_date: string | null;
   calendar_message_id: string | number | null;
@@ -1362,6 +1365,9 @@ function rowToTelegramDraft(row: {
     workspaceId: row.workspace_id,
     boardId: row.board_id,
     title: row.title,
+    description: row.description,
+    kind: (row.kind as TelegramDraft["kind"]) ?? null,
+    priority: (row.priority as TelegramDraft["priority"]) ?? null,
     assigneeEmail: row.assignee_email,
     dueDate: row.due_date,
     // BIGINT приходит из pg строкой — приводим к числу, Telegram message_id
@@ -1392,6 +1398,9 @@ export async function startTelegramDraft(input: {
        workspace_id = EXCLUDED.workspace_id,
        board_id = EXCLUDED.board_id,
        title = NULL,
+       description = NULL,
+       kind = NULL,
+       priority = NULL,
        assignee_email = NULL,
        due_date = NULL,
        calendar_message_id = NULL,
@@ -1422,6 +1431,9 @@ const DRAFT_COLUMN: Record<string, string> = {
   workspaceId: "workspace_id",
   boardId: "board_id",
   title: "title",
+  description: "description",
+  kind: "kind",
+  priority: "priority",
   assigneeEmail: "assignee_email",
   dueDate: "due_date",
   calendarMessageId: "calendar_message_id",
@@ -1431,7 +1443,22 @@ const DRAFT_COLUMN: Record<string, string> = {
 /** Обновляет поля черновика и продлевает TTL — каждый шаг диалога отодвигает протухание. */
 export async function updateTelegramDraft(
   chatId: string,
-  patch: Partial<Pick<TelegramDraft, "step" | "workspaceId" | "boardId" | "title" | "assigneeEmail" | "dueDate" | "calendarMessageId" | "calendarMonth">>,
+  patch: Partial<
+    Pick<
+      TelegramDraft,
+      | "step"
+      | "workspaceId"
+      | "boardId"
+      | "title"
+      | "description"
+      | "kind"
+      | "priority"
+      | "assigneeEmail"
+      | "dueDate"
+      | "calendarMessageId"
+      | "calendarMonth"
+    >
+  >,
 ): Promise<TelegramDraft | undefined> {
   const existing = await getTelegramDraft(chatId);
   if (!existing) return undefined;

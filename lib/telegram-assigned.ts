@@ -9,6 +9,7 @@ import {
 } from "@/lib/telegram";
 import { compareTasks, isDueToday, isOverdue } from "@/lib/task-sort";
 import { STAGES } from "@/lib/schema";
+import { taskCardButton } from "@/lib/telegram-task-actions";
 import type { TaskWithBoard } from "@/lib/models";
 
 /**
@@ -93,6 +94,11 @@ async function buildAssignedPage(
     footer.push(`Выполнено: ${doneCount}`);
   }
 
+  // По кнопке на задачу — карточка с архивом и удалением.
+  const taskRows: InlineButton[][] = page.map(({ task }) => [
+    taskCardButton("ag", offset, task.id, `⚙️ ${task.title.length > 32 ? `${task.title.slice(0, 31)}…` : task.title}`),
+  ]);
+
   const navRow: InlineButton[] = [];
   if (offset > 0) {
     navRow.push({ text: "← Назад", callback_data: `ag:${Math.max(0, offset - PAGE_SIZE)}` });
@@ -104,7 +110,7 @@ async function buildAssignedPage(
   const text = `<b>Задачи, которые я поручил</b>\n\n${lines.join("\n\n")}${
     footer.length > 0 ? `\n\n${footer.join(" · ")}` : ""
   }`;
-  return { text, keyboard: navRow.length > 0 ? [navRow] : [] };
+  return { text, keyboard: navRow.length > 0 ? [...taskRows, navRow] : taskRows };
 }
 
 export async function handleAssignedByMe(chatId: string, email: string): Promise<void> {

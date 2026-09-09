@@ -26,6 +26,7 @@ import {
 } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
 import { handleAssignedByMe, handleAssignedPage } from "@/lib/telegram-assigned";
+import { handleTaskCardCallback, taskCardButton } from "@/lib/telegram-task-actions";
 import {
   NEWTASK_BUTTON,
   handleNewTaskCallback,
@@ -113,8 +114,11 @@ function buildTasksPage(
   const rangeLabel =
     entries.length > PAGE_SIZE ? `\n\nПоказано ${offset + 1}–${offset + page.length} из ${entries.length}` : "";
 
+  // Слева — быстрое «готово» (как было), справа «⚙️» открывает карточку
+  // задачи с архивом и удалением.
   const doneRows: InlineButton[][] = page.map(({ task }) => [
-    { text: `✅ ${truncate(task.title, 40)}`, callback_data: `done:${task.id}` },
+    { text: `✅ ${truncate(task.title, 32)}`, callback_data: `done:${task.id}` },
+    taskCardButton(mode, offset, task.id),
   ]);
   const navRow: InlineButton[] = [];
   if (offset > 0) {
@@ -228,6 +232,16 @@ async function handleCallbackQuery(callbackQuery: {
   }
   const data = callbackQuery.data ?? "";
   const message = callbackQuery.message;
+
+  // Карточка действий по задаче (архив, удаление) — открывается «⚙️» из списков.
+  const handledByCard = await handleTaskCardCallback({
+    callbackQueryId: callbackQuery.id,
+    chatId,
+    messageId: message?.message_id,
+    email: link.email,
+    data,
+  });
+  if (handledByCard) return;
 
   // Шаги пошагового создания задачи (/newtask) — включая инлайн-календарь.
   const handledByNewTask = await handleNewTaskCallback({
