@@ -24,11 +24,3 @@ export const PRIORITIES = [
 ] as const;
 
 export type PriorityId = (typeof PRIORITIES)[number]["id"];
-
-export const TASK_KINDS = [
-  { id: "normal", label: "Обычная" },
-  { id: "hammers", label: "Хаммеры" },
-  { id: "superhits", label: "Суперхиты" },
-] as const;
-
-export type TaskKindId = (typeof TASK_KINDS)[number]["id"];

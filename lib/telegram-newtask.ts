@@ -21,7 +21,7 @@ import {
   type InlineButton,
 } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
-import { PRIORITIES, TASK_KINDS } from "@/lib/schema";
+import { PRIORITIES } from "@/lib/schema";
 import type { TelegramDraft } from "@/lib/models";
 
 /**
@@ -37,7 +37,6 @@ import type { TelegramDraft } from "@/lib/models";
  *   nt_ws:<workspaceId>   — выбор пространства
  *   nt_bd:<boardId>       — выбор доски
  *   nt_desc:skip          — пропустить описание
- *   nt_kind:<id>          — вид задачи
  *   nt_prio:<id>          — приоритет
  *   nt_as:self|none|<i>   — выбор исполнителя (i — индекс в отсортированном
  *                           списке участников: email в callback_data может
@@ -192,19 +191,6 @@ async function promptDescription(
     messageId,
     `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nПришлите описание одним сообщением — или пропустите этот шаг.`,
     [[{ text: "Пропустить", callback_data: "nt_desc:skip" }], CANCEL_ROW],
-  );
-}
-
-async function promptKind(
-  chatId: string,
-  draft: TelegramDraft,
-  messageId: number | undefined,
-): Promise<void> {
-  await show(
-    chatId,
-    messageId,
-    `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nКакой вид задачи?`,
-    [...TASK_KINDS.map((kind) => [{ text: kind.label, callback_data: `nt_kind:${kind.id}` }]), CANCEL_ROW],
   );
 }
 
@@ -397,7 +383,6 @@ async function finishDraft(
     title: draft.title!,
     description: draft.description ?? "",
     priority: draft.priority ?? "medium",
-    kind: draft.kind ?? "normal",
     assigneeEmails: draft.assigneeEmails,
     dueDate: draft.dueDate,
     createdBy: draft.email,
@@ -429,7 +414,6 @@ async function finishDraft(
 
   const assigneeLabel = await namesOf(task.assigneeEmails);
 
-  const kindLabel = TASK_KINDS.find((k) => k.id === task.kind)?.label ?? task.kind;
   const priorityLabel = PRIORITIES.find((p) => p.id === task.priority)?.label ?? task.priority;
 
   await show(
@@ -442,7 +426,7 @@ async function finishDraft(
       ...(task.description ? [escapeHtml(task.description)] : []),
       "",
       `Доска: ${escapeHtml(board.name)}`,
-      `Вид: ${escapeHtml(kindLabel)} · Приоритет: ${escapeHtml(priorityLabel)}`,
+      `Приоритет: ${escapeHtml(priorityLabel)}`,
       `${task.assigneeEmails.length > 1 ? "Исполнители" : "Исполнитель"}: ${escapeHtml(assigneeLabel)}`,
       `Срок: ${formatDue(task.dueDate)}`,
     ].join("\n"),
@@ -477,11 +461,11 @@ export async function handleNewTaskText(chatId: string, text: string): Promise<b
 
   if (draft.step === "description") {
     const next = await updateTelegramDraft(chatId, {
-      step: "kind",
+      step: "priority",
       // 2000 — тот же предел, что и у описания в форме приложения (lib/validation.ts).
       description: text.trim().slice(0, 2000),
     });
-    if (next) await promptKind(chatId, next, undefined);
+    if (next) await promptPriority(chatId, next, undefined);
     return true;
   }
 
@@ -505,7 +489,6 @@ export async function handleNewTaskCallback(input: {
     data.startsWith("nt_ws:") ||
     data.startsWith("nt_bd:") ||
     data.startsWith("nt_desc:") ||
-    data.startsWith("nt_kind:") ||
     data.startsWith("nt_prio:") ||
     data === "nt_as_done" ||
     data.startsWith("nt_as:") ||
@@ -549,15 +532,7 @@ export async function handleNewTaskCallback(input: {
   }
 
   if (data === "nt_desc:skip") {
-    const next = await updateTelegramDraft(chatId, { step: "kind", description: null });
-    await answerCallbackQuery(callbackQueryId);
-    if (next) await promptKind(chatId, next, messageId);
-    return true;
-  }
-
-  if (data.startsWith("nt_kind:")) {
-    const kind = data.slice("nt_kind:".length) as TelegramDraft["kind"];
-    const next = await updateTelegramDraft(chatId, { step: "priority", kind });
+    const next = await updateTelegramDraft(chatId, { step: "priority", description: null });
     await answerCallbackQuery(callbackQueryId);
     if (next) await promptPriority(chatId, next, messageId);
     return true;

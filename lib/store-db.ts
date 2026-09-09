@@ -85,9 +85,6 @@ function rowToTask(row: {
   created_by: string | null;
   stage: string;
   priority: string;
-  kind: string;
-  target_count: number | null;
-  found_count: number | null;
   due_date: string | null;
   completed_at: Date | null;
   archived_at: Date | null;
@@ -103,9 +100,6 @@ function rowToTask(row: {
     createdBy: row.created_by,
     stage: row.stage as Task["stage"],
     priority: row.priority as Task["priority"],
-    kind: (row.kind ?? "normal") as Task["kind"],
-    targetCount: row.target_count,
-    foundCount: row.found_count,
     // Исполнители приезжают отдельным запросом (см. withAssignees) — в самой
     // строке задачи их нет, связь живёт в task_assignees.
     assigneeEmails: [],
@@ -671,9 +665,6 @@ export async function createTask(input: {
   title: string;
   description: string;
   priority: Task["priority"];
-  kind?: Task["kind"];
-  targetCount?: number | null;
-  foundCount?: number | null;
   assigneeEmails: string[];
   dueDate: string | null;
   createdBy?: string | null;
@@ -681,8 +672,8 @@ export async function createTask(input: {
   const pool = getPool();
   const taskId = id("task");
   const res = await pool.query(
-    `INSERT INTO tasks (id, board_id, title, description, stage, priority, kind, target_count, found_count, due_date, created_by)
-     VALUES ($1, $2, $3, $4, 'todo', $5, $6, $7, $8, $9, $10)
+    `INSERT INTO tasks (id, board_id, title, description, stage, priority, due_date, created_by)
+     VALUES ($1, $2, $3, $4, 'todo', $5, $6, $7)
      RETURNING *`,
     [
       taskId,
@@ -690,9 +681,6 @@ export async function createTask(input: {
       input.title,
       input.description,
       input.priority,
-      input.kind ?? "normal",
-      input.targetCount ?? null,
-      input.foundCount ?? null,
       input.dueDate,
       input.createdBy ?? null,
     ],
@@ -737,9 +725,6 @@ export async function updateTask(
       | "resultNote"
       | "stage"
       | "priority"
-      | "kind"
-      | "targetCount"
-      | "foundCount"
       | "assigneeEmails"
       | "dueDate"
       | "completedAt"
@@ -761,9 +746,6 @@ export async function updateTask(
     resultNote: "result_note",
     stage: "stage",
     priority: "priority",
-    kind: "kind",
-    targetCount: "target_count",
-    foundCount: "found_count",
     dueDate: "due_date",
     completedAt: "completed_at",
     archivedAt: "archived_at",
@@ -1385,7 +1367,6 @@ function rowToTelegramDraft(row: {
   board_id: string | null;
   title: string | null;
   description: string | null;
-  kind: string | null;
   priority: string | null;
   assignee_emails: string | null;
   due_date: string | null;
@@ -1403,7 +1384,6 @@ function rowToTelegramDraft(row: {
     boardId: row.board_id,
     title: row.title,
     description: row.description,
-    kind: (row.kind as TelegramDraft["kind"]) ?? null,
     priority: (row.priority as TelegramDraft["priority"]) ?? null,
     assigneeEmails: row.assignee_emails ? row.assignee_emails.split(",").filter(Boolean) : [],
     dueDate: row.due_date,
@@ -1438,7 +1418,6 @@ export async function startTelegramDraft(input: {
        board_id = EXCLUDED.board_id,
        title = NULL,
        description = NULL,
-       kind = NULL,
        priority = NULL,
        assignee_emails = NULL,
        due_date = NULL,
@@ -1480,7 +1459,6 @@ const DRAFT_COLUMN: Record<string, string> = {
   boardId: "board_id",
   title: "title",
   description: "description",
-  kind: "kind",
   priority: "priority",
   assigneeEmails: "assignee_emails",
   dueDate: "due_date",
@@ -1500,7 +1478,6 @@ export async function updateTelegramDraft(
       | "boardId"
       | "title"
       | "description"
-      | "kind"
       | "priority"
       | "assigneeEmails"
       | "dueDate"

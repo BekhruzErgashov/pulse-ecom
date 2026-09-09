@@ -83,22 +83,12 @@ export const updateBoardSchema = z.object({
 });
 export type UpdateBoardInput = z.infer<typeof updateBoardSchema>;
 
-const nullableCount = z
-  .number()
-  .int()
-  .min(0)
-  .max(1_000_000)
-  .nullable()
-  .optional();
 
 export const createTaskSchema = z.object({
   boardId: z.string().min(1),
   title: z.string().min(1, "Введите название задачи").max(200),
   description: z.string().max(2000).optional().default(""),
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
-  kind: z.enum(["normal", "hammers", "superhits"]).default("normal"),
-  targetCount: nullableCount.default(null),
-  foundCount: nullableCount.default(null),
   // Исполнителей может быть несколько. Одиночное assigneeEmail оставлено для
   // совместимости со старыми клиентами — сервер приводит его к массиву.
   assigneeEmails: z.array(z.string().email()).optional(),
@@ -113,9 +103,6 @@ export const updateTaskSchema = z.object({
   resultNote: z.string().max(2000).nullable().optional(),
   stage: z.enum(["todo", "in_progress", "review", "done"]).optional(),
   priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  kind: z.enum(["normal", "hammers", "superhits"]).optional(),
-  targetCount: nullableCount,
-  foundCount: nullableCount,
   assigneeEmails: z.array(z.string().email()).optional(),
   assigneeEmail: z.string().email().nullable().optional(),
   dueDate: z.string().nullable().optional(),

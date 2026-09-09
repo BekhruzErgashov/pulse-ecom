@@ -23,7 +23,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -31,7 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PRIORITIES, STAGES, TASK_KINDS } from "@/lib/schema";
+import { PRIORITIES, STAGES } from "@/lib/schema";
 import { createTaskSchema, updateTaskSchema } from "@/lib/validation";
 import { isOverdue as checkOverdue } from "@/lib/task-sort";
 import { linkifyText } from "@/lib/linkify";
@@ -205,13 +204,6 @@ export function TaskDialog({
   const [description, setDescription] = React.useState(task?.description ?? "");
   const [priority, setPriority] = React.useState<Task["priority"]>(task?.priority ?? "medium");
   const [stage, setStage] = React.useState<Task["stage"]>(task?.stage ?? defaultStage ?? "todo");
-  const [kind, setKind] = React.useState<Task["kind"]>(task?.kind ?? "normal");
-  const [targetCount, setTargetCount] = React.useState(
-    task?.targetCount != null ? String(task.targetCount) : "",
-  );
-  const [foundCount, setFoundCount] = React.useState(
-    task?.foundCount != null ? String(task.foundCount) : "",
-  );
   const [assigneeEmails, setAssigneeEmails] = React.useState<string[]>(task?.assigneeEmails ?? []);
   const [dueDate, setDueDate] = React.useState(isoToLocalInput(task?.dueDate ?? null));
   const [pending, setPending] = React.useState(false);
@@ -221,9 +213,6 @@ export function TaskDialog({
   // режима просмотра — не завязано на полную форму редактирования.
   const [quickStage, setQuickStage] = React.useState<Task["stage"]>(task?.stage ?? "todo");
   const [quickComment, setQuickComment] = React.useState(task?.resultNote ?? "");
-  const [quickFoundCount, setQuickFoundCount] = React.useState(
-    task?.foundCount != null ? String(task.foundCount) : "0",
-  );
   const [quickPending, setQuickPending] = React.useState(false);
 
   const [attachments, setAttachments] = React.useState<TaskAttachmentMeta[]>([]);
@@ -363,20 +352,15 @@ export function TaskDialog({
       setDescription(task?.description ?? "");
       setPriority(task?.priority ?? "medium");
       setStage(task?.stage ?? defaultStage ?? "todo");
-      setKind(task?.kind ?? "normal");
-      setTargetCount(task?.targetCount != null ? String(task.targetCount) : "");
-      setFoundCount(task?.foundCount != null ? String(task.foundCount) : "");
       setAssigneeEmails(task?.assigneeEmails ?? []);
       setDueDate(isoToLocalInput(task?.dueDate ?? null));
       setQuickStage(task?.stage ?? "todo");
       setQuickComment(task?.resultNote ?? "");
-      setQuickFoundCount(task?.foundCount != null ? String(task.foundCount) : "0");
       setError(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task?.id, defaultStage]);
 
-  const isPromo = kind !== "normal";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -386,9 +370,6 @@ export function TaskDialog({
         title,
         description,
         priority,
-        kind,
-        targetCount: isPromo && targetCount !== "" ? Number(targetCount) : null,
-        foundCount: isPromo && foundCount !== "" ? Number(foundCount) : null,
         assigneeEmails,
         dueDate: localInputToIso(dueDate),
       };
@@ -496,13 +477,6 @@ export function TaskDialog({
       if (canEditComment && quickComment !== (task.resultNote ?? "")) {
         patch.resultNote = quickComment || null;
       }
-      if (
-        canEditComment &&
-        isPromo &&
-        Number(quickFoundCount || 0) !== (task.foundCount ?? 0)
-      ) {
-        patch.foundCount = quickFoundCount === "" ? 0 : Number(quickFoundCount);
-      }
       if (Object.keys(patch).length === 0) {
         onOpenChange(false);
         return;
@@ -540,13 +514,6 @@ export function TaskDialog({
             setTitle={setTitle}
             description={description}
             setDescription={setDescription}
-            kind={kind}
-            setKind={setKind}
-            isPromo={isPromo}
-            targetCount={targetCount}
-            setTargetCount={setTargetCount}
-            foundCount={foundCount}
-            setFoundCount={setFoundCount}
             priority={priority}
             setPriority={setPriority}
             assigneeEmails={assigneeEmails}
@@ -602,53 +569,7 @@ export function TaskDialog({
               <div className="flex flex-wrap items-center gap-1.5">
                 <Badge variant={PRIORITY_VARIANT[task.priority]}>{priorityLabel}</Badge>
                 <Badge variant="outline">{stageLabel}</Badge>
-                {isPromo && (
-                  <Badge variant="outline">{TASK_KINDS.find((k) => k.id === task.kind)?.label}</Badge>
-                )}
               </div>
-
-              {isPromo && (canEditComment || task.targetCount != null) && (
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs text-[var(--color-ink-soft)]">
-                    <span>Прогресс</span>
-                    {canEditComment ? (
-                      <span className="flex items-center gap-1.5 font-mono">
-                        <Input
-                          type="number"
-                          min={0}
-                          value={quickFoundCount}
-                          onChange={(e) => setQuickFoundCount(e.target.value)}
-                          className="h-6 w-16 px-1.5 py-0 text-right"
-                          aria-label="Найдено, шт."
-                        />
-                        {task.targetCount != null ? ` / ${task.targetCount}` : ""}
-                      </span>
-                    ) : (
-                      <span className="font-mono">
-                        {task.foundCount ?? 0}
-                        {task.targetCount != null ? ` / ${task.targetCount}` : ""}
-                      </span>
-                    )}
-                  </div>
-                  {task.targetCount != null && (
-                    <Progress
-                      value={Math.min(
-                        100,
-                        Math.round(
-                          ((canEditComment ? Number(quickFoundCount || 0) : task.foundCount ?? 0) /
-                            task.targetCount) *
-                            100,
-                        ),
-                      )}
-                    />
-                  )}
-                  {canEditComment && (
-                    <p className="text-xs text-[var(--color-ink-soft)]">
-                      Обновите количество и нажмите «Сохранить» внизу.
-                    </p>
-                  )}
-                </div>
-              )}
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -951,13 +872,6 @@ export function TaskDialog({
               setTitle={setTitle}
               description={description}
               setDescription={setDescription}
-              kind={kind}
-              setKind={setKind}
-              isPromo={isPromo}
-              targetCount={targetCount}
-              setTargetCount={setTargetCount}
-              foundCount={foundCount}
-              setFoundCount={setFoundCount}
               priority={priority}
               setPriority={setPriority}
               assigneeEmails={assigneeEmails}
@@ -1004,13 +918,6 @@ function TaskForm({
   setTitle,
   description,
   setDescription,
-  kind,
-  setKind,
-  isPromo,
-  targetCount,
-  setTargetCount,
-  foundCount,
-  setFoundCount,
   priority,
   setPriority,
   assigneeEmails,
@@ -1027,13 +934,6 @@ function TaskForm({
   setTitle: (v: string) => void;
   description: string;
   setDescription: (v: string) => void;
-  kind: Task["kind"];
-  setKind: (v: Task["kind"]) => void;
-  isPromo: boolean;
-  targetCount: string;
-  setTargetCount: (v: string) => void;
-  foundCount: string;
-  setFoundCount: (v: string) => void;
   priority: Task["priority"];
   setPriority: (v: Task["priority"]) => void;
   assigneeEmails: string[];
@@ -1046,8 +946,6 @@ function TaskForm({
   stage: Task["stage"];
   setStage: (v: Task["stage"]) => void;
 }) {
-  const promoLabel = TASK_KINDS.find((k) => k.id === kind)?.label ?? "";
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
@@ -1071,47 +969,6 @@ function TaskForm({
           placeholder="Детали, контекст, ссылки — что нужно знать, чтобы выполнить задачу"
         />
       </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="task-kind">Вид задачи</Label>
-        <Select id="task-kind" value={kind} onChange={(e) => setKind(e.target.value as Task["kind"])}>
-          {TASK_KINDS.map((k) => (
-            <option key={k.id} value={k.id}>
-              {k.label}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      {isPromo && (
-        <div className="grid grid-cols-2 gap-4 rounded-(--radius-card) border border-[var(--color-line)] p-3">
-          <div className="col-span-2 -mt-1 text-xs text-[var(--color-ink-soft)]">
-            Акционная задача «{promoLabel}»: задайте план и вносите факт по мере находок.
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-target">Таргет (план), шт.</Label>
-            <Input
-              id="task-target"
-              type="number"
-              min={0}
-              value={targetCount}
-              onChange={(e) => setTargetCount(e.target.value)}
-              placeholder="Например, 50"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-found">Найдено, шт.</Label>
-            <Input
-              id="task-found"
-              type="number"
-              min={0}
-              value={foundCount}
-              onChange={(e) => setFoundCount(e.target.value)}
-              placeholder="0"
-            />
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-2 gap-4">
         {showStage && (

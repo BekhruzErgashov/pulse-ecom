@@ -432,9 +432,6 @@ export async function createTask(input: {
   title: string;
   description: string;
   priority: Task["priority"];
-  kind?: Task["kind"];
-  targetCount?: number | null;
-  foundCount?: number | null;
   assigneeEmails: string[];
   dueDate: string | null;
   createdBy?: string | null;
@@ -449,9 +446,6 @@ export async function createTask(input: {
     createdBy: input.createdBy ?? null,
     stage: "todo",
     priority: input.priority,
-    kind: input.kind ?? "normal",
-    targetCount: input.targetCount ?? null,
-    foundCount: input.foundCount ?? null,
     assigneeEmails: [...new Set(input.assigneeEmails.map((e) => e.toLowerCase()))],
     dueDate: input.dueDate,
     completedAt: null,
@@ -490,9 +484,6 @@ export async function updateTask(
       | "resultNote"
       | "stage"
       | "priority"
-      | "kind"
-      | "targetCount"
-      | "foundCount"
       | "assigneeEmails"
       | "dueDate"
       | "completedAt"
@@ -945,7 +936,6 @@ export async function startTelegramDraft(input: {
     boardId: input.boardId ?? null,
     title: null,
     description: null,
-    kind: null,
     priority: null,
     assigneeEmails: [],
     dueDate: null,
@@ -981,7 +971,6 @@ export async function updateTelegramDraft(
       | "boardId"
       | "title"
       | "description"
-      | "kind"
       | "priority"
       | "assigneeEmails"
       | "dueDate"

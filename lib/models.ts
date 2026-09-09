@@ -1,4 +1,4 @@
-import type { PriorityId, StageId, TaskKindId } from "@/lib/schema";
+import type { PriorityId, StageId } from "@/lib/schema";
 
 export type Role = "admin" | "member";
 
@@ -74,9 +74,6 @@ export interface Task {
   createdBy: string | null;
   stage: StageId;
   priority: PriorityId;
-  kind: TaskKindId;
-  targetCount: number | null;
-  foundCount: number | null;
   /** Исполнители задачи; пустой массив — не назначена. Хранятся отдельной таблицей task_assignees, порядок не значим. */
   assigneeEmails: string[];
   dueDate: string | null;
@@ -215,7 +212,6 @@ export interface TelegramDraft {
   boardId: string | null;
   title: string | null;
   description: string | null;
-  kind: TaskKindId | null;
   priority: PriorityId | null;
   /** Выбранные в диалоге исполнители. В БД лежат одной строкой через запятую — в email запятых не бывает, а для черновика отдельная таблица избыточна. */
   assigneeEmails: string[];

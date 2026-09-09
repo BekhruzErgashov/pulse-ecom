@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Вид задачи (Обычная/Хаммеры/Суперхиты) и связанные с ним таргет/факт
+-- убраны из продукта: все задачи обычные. Колонки оставлены как исторический
+-- след и больше не читаются и не пишутся — как и tasks.assignee_email.
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'normal';
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS target_count INTEGER;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS found_count INTEGER;

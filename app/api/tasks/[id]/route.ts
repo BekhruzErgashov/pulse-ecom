@@ -40,33 +40,19 @@ export async function PATCH(
     );
   }
 
-  // Комментарий исполнителя и «Найдено, шт.» — поля, которые редактирует
-  // либо исполнитель, либо постановщик задачи; проверяем это отдельно
-  // (лишний запрос делаем только когда поле реально меняется, чтобы не
-  // тормозить обычное перетаскивание карточек по этапам). Заодно эта же
-  // «existing»-запись используется ниже, чтобы понять, сменился ли
-  // исполнитель/этап/приоритет/срок — для уведомлений и автолога истории.
+  // Комментарий исполнителя — поле, которое
+  // редактирует только исполнитель — проверяем отдельно и лишь когда поле
+  // реально меняется, чтобы не тормозить обычное перетаскивание карточек по
+  // этапам. Заодно эта же «existing»-запись используется ниже, чтобы понять,
+  // сменился ли исполнитель/этап/приоритет/срок — для уведомлений и автолога.
   const existing = await getTask(id);
-  if ("resultNote" in parsed.data || "foundCount" in parsed.data) {
+  if ("resultNote" in parsed.data) {
     if (!existing) {
       return NextResponse.json({ error: "Задача не найдена" }, { status: 404 });
     }
-    const isAssignee = existing.assigneeEmails.includes(user.email);
-    const isCreatorOrUnknown =
-      !existing.createdBy || existing.createdBy === user.email;
-
-    if ("resultNote" in parsed.data && !isAssignee) {
+    if (!existing.assigneeEmails.includes(user.email)) {
       return NextResponse.json(
         { error: "Комментарий может редактировать только исполнитель задачи" },
-        { status: 403 },
-      );
-    }
-    if ("foundCount" in parsed.data && !isAssignee && !isCreatorOrUnknown) {
-      return NextResponse.json(
-        {
-          error:
-            "Найдено количество может менять только создатель или исполнитель задачи",
-        },
         { status: 403 },
       );
     }

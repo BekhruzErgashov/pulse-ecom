@@ -17,7 +17,7 @@ import {
   escapeHtml,
   type InlineButton,
 } from "@/lib/telegram";
-import { PRIORITIES, STAGES, TASK_KINDS } from "@/lib/schema";
+import { PRIORITIES, STAGES } from "@/lib/schema";
 import type { Task } from "@/lib/models";
 
 /**
@@ -88,7 +88,7 @@ async function buildCard(
     "",
     `Доска: ${escapeHtml(board?.name ?? "—")}`,
     `Этап: ${escapeHtml(label(STAGES, task.stage))}`,
-    `Вид: ${escapeHtml(label(TASK_KINDS, task.kind))} · Приоритет: ${escapeHtml(label(PRIORITIES, task.priority))}`,
+    `Приоритет: ${escapeHtml(label(PRIORITIES, task.priority))}`,
     `${assigneeNames.length > 1 ? "Исполнители" : "Исполнитель"}: ${escapeHtml(
       assigneeNames.length > 0 ? assigneeNames.join(", ") : "не назначен",
     )}`,
