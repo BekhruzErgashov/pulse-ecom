@@ -11,6 +11,7 @@ import type {
   QuestionStatus,
   Task,
   TaskAttachment,
+  TaskChecklistItem,
   TaskWithBoard,
   User,
   Workspace,
@@ -894,6 +895,103 @@ export async function getTaskAttachment(attachmentId: string): Promise<TaskAttac
 export async function deleteTaskAttachment(attachmentId: string): Promise<void> {
   const pool = getPool();
   await pool.query("DELETE FROM task_attachments WHERE id = $1", [attachmentId]);
+}
+
+// ---------- Чек-лист задачи ----------
+
+
+function rowToChecklistItem(row: {
+  id: string;
+  task_id: string;
+  text: string;
+  done: boolean;
+  position: number;
+  created_by: string | null;
+  created_at: Date;
+}): TaskChecklistItem {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    text: row.text,
+    done: row.done,
+    position: row.position,
+    createdBy: row.created_by,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+
+export async function listChecklistItems(taskId: string): Promise<TaskChecklistItem[]> {
+  const pool = getPool();
+  const res = await pool.query(
+    "SELECT * FROM task_checklist_items WHERE task_id = $1 ORDER BY position ASC",
+    [taskId],
+  );
+  return res.rows.map(rowToChecklistItem);
+}
+
+
+export async function createChecklistItem(input: {
+  taskId: string;
+  text: string;
+  createdBy: string | null;
+}): Promise<TaskChecklistItem> {
+  const pool = getPool();
+  const itemId = id("checklist");
+  const res = await pool.query(
+    `INSERT INTO task_checklist_items (id, task_id, text, position, created_by)
+     VALUES (
+       $1, $2, $3,
+       COALESCE((SELECT max(position) + 1 FROM task_checklist_items WHERE task_id = $2), 0),
+       $4
+     )
+     RETURNING *`,
+    [itemId, input.taskId, input.text, input.createdBy],
+  );
+  return rowToChecklistItem(res.rows[0]);
+}
+
+
+export async function getChecklistItem(itemId: string): Promise<TaskChecklistItem | undefined> {
+  const pool = getPool();
+  const res = await pool.query("SELECT * FROM task_checklist_items WHERE id = $1", [itemId]);
+  if (res.rowCount === 0) return undefined;
+  return rowToChecklistItem(res.rows[0]);
+}
+
+
+export async function updateChecklistItem(
+  itemId: string,
+  patch: Partial<Pick<TaskChecklistItem, "text" | "done">>,
+): Promise<TaskChecklistItem | undefined> {
+  const pool = getPool();
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+  if (patch.text !== undefined) {
+    fields.push(`text = $${i}`);
+    values.push(patch.text);
+    i++;
+  }
+  if (patch.done !== undefined) {
+    fields.push(`done = $${i}`);
+    values.push(patch.done);
+    i++;
+  }
+  if (fields.length === 0) return getChecklistItem(itemId);
+  values.push(itemId);
+  const res = await pool.query(
+    `UPDATE task_checklist_items SET ${fields.join(", ")} WHERE id = $${i} RETURNING *`,
+    values,
+  );
+  if (res.rowCount === 0) return undefined;
+  return rowToChecklistItem(res.rows[0]);
+}
+
+
+export async function deleteChecklistItem(itemId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM task_checklist_items WHERE id = $1", [itemId]);
 }
 
 // ---------- Questions ----------

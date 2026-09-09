@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { listWorkspaces, listWorkspacesForUser, listWorkLinks } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { QuickLinks } from "@/components/quick-links";
 
 export default async function WorkspaceLinksPage({
@@ -20,11 +20,17 @@ export default async function WorkspaceLinksPage({
   const links = await listWorkLinks(workspaceId);
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <AppSidebar user={user} workspaces={workspaces} currentWorkspaceId={workspaceId} />
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10">
+    <AppShell
+      user={user}
+      workspaces={workspaces}
+      currentWorkspaceId={workspaceId}
+      active="links"
+      eyebrow="Команда"
+      title="Ссылки"
+      wrapperClassName="flex min-h-screen flex-col"
+      mainClassName="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10"
+    >
         <QuickLinks workspaceId={workspaceId} initialLinks={links} />
-      </main>
-    </div>
+      </AppShell>
   );
 }

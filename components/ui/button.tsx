@@ -7,11 +7,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-[var(--color-signal)] text-[var(--color-on-accent)] hover:bg-[var(--color-signal-ink)]",
+        // Градиент + свечение через var(--shadow-signal) — в светлой теме
+        // почти не заметно (сигнальный/тёмно-синий близки по тону), в
+        // тёмной «стеклянной» теме (app/globals.css, [data-theme="dark-glass"])
+        // даёт как раз тот сине-фиолетовый glow, что на референсе. Кнопка
+        // ничего не знает о текущей теме — обе переменные просто
+        // переопределяются в globals.css.
+        default:
+          "bg-gradient-to-br from-[var(--color-signal)] to-[var(--color-signal-ink)] text-white shadow-[0_6px_20px_-4px_var(--shadow-signal)] transition hover:brightness-110",
         outline:
           "border border-[var(--color-line)] bg-[var(--color-paper-raised)] text-[var(--color-ink)] hover:bg-[var(--color-paper)]",
         ghost: "text-[var(--color-ink)] hover:bg-[var(--color-paper)]",
-        destructive: "bg-[var(--color-danger)] text-[var(--color-on-accent)] hover:opacity-90",
+        destructive: "bg-[var(--color-danger)] text-white hover:opacity-90",
         subtle: "bg-[var(--color-signal-soft)] text-[var(--color-signal-ink)] hover:opacity-90",
       },
       size: {

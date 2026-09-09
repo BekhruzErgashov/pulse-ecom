@@ -68,6 +68,13 @@ export const countTaskAttachments = impl.countTaskAttachments;
 export const getTaskAttachment = impl.getTaskAttachment;
 export const deleteTaskAttachment = impl.deleteTaskAttachment;
 
+// Чек-лист внутри задачи
+export const listChecklistItems = impl.listChecklistItems;
+export const createChecklistItem = impl.createChecklistItem;
+export const getChecklistItem = impl.getChecklistItem;
+export const updateChecklistItem = impl.updateChecklistItem;
+export const deleteChecklistItem = impl.deleteChecklistItem;
+
 // Questions
 export const createQuestion = impl.createQuestion;
 export const listQuestionsForUser = impl.listQuestionsForUser;

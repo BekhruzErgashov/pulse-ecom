@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { listAllowedEmails, listUsers, listWorkspaces } from "@/lib/data";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { AdminPanel } from "@/components/admin-panel";
 
 export default async function AdminPage() {
@@ -14,9 +14,13 @@ export default async function AdminPage() {
   if (!admin || admin.role !== "admin") redirect("/boards");
 
   return (
-    <div className="min-h-screen lg:pl-56">
-      <AppSidebar user={admin} />
-      <main className="mx-auto max-w-4xl px-6 py-10">
+    <AppShell
+      user={admin}
+      active="admin"
+      eyebrow="Администрирование"
+      title="Доступы и команда"
+      mainClassName="mx-auto max-w-4xl px-6 py-10"
+    >
         <div className="mb-8">
           <p className="eyebrow mb-1">Администрирование</p>
           <h1 className="text-2xl font-semibold tracking-tight">Доступы и команда</h1>
@@ -31,7 +35,6 @@ export default async function AdminPage() {
           initialUsers={users}
           initialWorkspaces={workspaces}
         />
-      </main>
-    </div>
+      </AppShell>
   );
 }

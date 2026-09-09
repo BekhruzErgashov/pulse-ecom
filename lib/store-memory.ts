@@ -10,6 +10,7 @@ import type {
   QuestionStatus,
   Task,
   TaskAttachment,
+  TaskChecklistItem,
   TaskWithBoard,
   User,
   UserRecord,
@@ -39,6 +40,7 @@ interface Store {
   boards: Map<string, Board>;
   tasks: Map<string, Task>;
   taskAttachments: Map<string, TaskAttachment>;
+  taskChecklistItems: Map<string, TaskChecklistItem>;
   questions: Map<string, Question>;
   messages: Map<string, QuestionMessage>;
   noteFolders: Map<string, NoteFolder>;
@@ -67,6 +69,7 @@ function createStore(): Store {
     boards: new Map(),
     tasks: new Map(),
     taskAttachments: new Map(),
+    taskChecklistItems: new Map(),
     questions: new Map(),
     messages: new Map(),
     noteFolders: new Map(),
@@ -659,6 +662,59 @@ export async function getTaskAttachment(attachmentId: string): Promise<TaskAttac
 
 export async function deleteTaskAttachment(attachmentId: string): Promise<void> {
   store.taskAttachments.delete(attachmentId);
+}
+
+// ---------- Чек-лист задачи ----------
+
+
+export async function listChecklistItems(taskId: string): Promise<TaskChecklistItem[]> {
+  return Array.from(store.taskChecklistItems.values())
+    .filter((i) => i.taskId === taskId)
+    .sort((a, b) => a.position - b.position);
+}
+
+
+export async function createChecklistItem(input: {
+  taskId: string;
+  text: string;
+  createdBy: string | null;
+}): Promise<TaskChecklistItem> {
+  const existing = Array.from(store.taskChecklistItems.values()).filter(
+    (i) => i.taskId === input.taskId,
+  );
+  const nextPosition = existing.length === 0 ? 0 : Math.max(...existing.map((i) => i.position)) + 1;
+  const item: TaskChecklistItem = {
+    id: id("checklist"),
+    taskId: input.taskId,
+    text: input.text,
+    done: false,
+    position: nextPosition,
+    createdBy: input.createdBy,
+    createdAt: new Date().toISOString(),
+  };
+  store.taskChecklistItems.set(item.id, item);
+  return item;
+}
+
+
+export async function getChecklistItem(itemId: string): Promise<TaskChecklistItem | undefined> {
+  return store.taskChecklistItems.get(itemId);
+}
+
+
+export async function updateChecklistItem(
+  itemId: string,
+  patch: Partial<Pick<TaskChecklistItem, "text" | "done">>,
+): Promise<TaskChecklistItem | undefined> {
+  const item = store.taskChecklistItems.get(itemId);
+  if (!item) return undefined;
+  Object.assign(item, patch);
+  return item;
+}
+
+
+export async function deleteChecklistItem(itemId: string): Promise<void> {
+  store.taskChecklistItems.delete(itemId);
 }
 
 // ---------- Questions ----------

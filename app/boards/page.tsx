@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/session";
 import { listWorkspaces, listWorkspacesForUser, seedIfEmpty } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { NoWorkspaceState } from "@/components/no-workspace-state";
 
 // /boards без ID пространства — определяем, куда вести (последнее выбранное
@@ -25,13 +25,10 @@ export default async function BoardsRedirectPage() {
 
   if (workspaces.length === 0) {
     return (
-      <div className="min-h-screen lg:pl-56">
-        <AppSidebar user={user} />
-        <main className="mx-auto max-w-6xl px-6 py-10">
+      <AppShell user={user} active="boards" eyebrow="Команда" title="Доски задач">
           <NoWorkspaceState isAdmin={user.role === "admin"} />
-        </main>
-      </div>
-    );
+        </AppShell>
+  );
   }
 
   const jar = await cookies();

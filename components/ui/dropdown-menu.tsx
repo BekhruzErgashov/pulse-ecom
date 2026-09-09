@@ -47,13 +47,27 @@ function DropdownMenuTrigger({
   });
 }
 
-function DropdownMenuContent({ className, children, align = "end" }: { className?: string; children: React.ReactNode; align?: "start" | "end" }) {
+function DropdownMenuContent({
+  className,
+  children,
+  align = "end",
+  side = "bottom",
+}: {
+  className?: string;
+  children: React.ReactNode;
+  align?: "start" | "end";
+  /** "top" — меню раскрывается вверх от триггера, а не вниз. Нужен для
+   *  вертикального сайдбара (components/app-shell.tsx): пункт профиля
+   *  внизу экрана, обычное "вниз" увело бы меню за пределы окна. */
+  side?: "top" | "bottom";
+}) {
   const ctx = React.useContext(DropdownContext)!;
   if (!ctx.open) return null;
   return (
     <div
       className={cn(
-        "panel absolute z-40 mt-2 min-w-[10rem] animate-in fade-in slide-in-from-top-1 duration-150 p-1 shadow-md",
+        "panel popover absolute z-40 min-w-[10rem] animate-in fade-in duration-150 p-1 shadow-md",
+        side === "top" ? "bottom-full mb-2 slide-in-from-bottom-1" : "mt-2 slide-in-from-top-1",
         align === "end" ? "right-0" : "left-0",
         className,
       )}

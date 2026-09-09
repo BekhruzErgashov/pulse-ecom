@@ -8,7 +8,7 @@ import {
   listWorkspacesForUser,
 } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { QuestionsList } from "@/components/questions-list";
 
 export default async function WorkspaceQuestionsPage({
@@ -37,9 +37,15 @@ export default async function WorkspaceQuestionsPage({
   );
 
   return (
-    <div className="min-h-screen lg:pl-56">
-      <AppSidebar user={user} workspaces={workspaces} currentWorkspaceId={workspaceId} />
-      <main className="mx-auto max-w-4xl px-6 py-10">
+    <AppShell
+      user={user}
+      workspaces={workspaces}
+      currentWorkspaceId={workspaceId}
+      active="questions"
+      eyebrow="Личное"
+      title="Вопросы"
+      mainClassName="mx-auto max-w-4xl px-6 py-10"
+    >
         <div className="mb-8">
           <p className="eyebrow mb-1">Личное</p>
           <h1 className="text-2xl font-semibold tracking-tight">Вопросы</h1>
@@ -54,7 +60,6 @@ export default async function WorkspaceQuestionsPage({
           teamMembers={teamMembers}
           workspaceId={workspaceId}
         />
-      </main>
-    </div>
+      </AppShell>
   );
 }

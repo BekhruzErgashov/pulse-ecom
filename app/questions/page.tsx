@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/session";
 import { listWorkspaces, listWorkspacesForUser } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { NoWorkspaceState } from "@/components/no-workspace-state";
 
 export default async function QuestionsRedirectPage() {
@@ -15,13 +15,16 @@ export default async function QuestionsRedirectPage() {
 
   if (workspaces.length === 0) {
     return (
-      <div className="min-h-screen lg:pl-56">
-        <AppSidebar user={user} />
-        <main className="mx-auto max-w-4xl px-6 py-10">
+      <AppShell
+        user={user}
+        active="questions"
+        eyebrow="Личное"
+        title="Вопросы"
+        mainClassName="mx-auto max-w-4xl px-6 py-10"
+      >
           <NoWorkspaceState isAdmin={user.role === "admin"} />
-        </main>
-      </div>
-    );
+        </AppShell>
+  );
   }
 
   const jar = await cookies();

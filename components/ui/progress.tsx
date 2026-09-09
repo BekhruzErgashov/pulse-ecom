@@ -18,8 +18,12 @@ function Progress({ value, colorVar = "var(--color-signal)", className, ...props
       {...props}
     >
       <div
+        // background (не backgroundColor) — так colorVar может быть и
+        // обычным цветом, и CSS-градиентом (`linear-gradient(...)`),
+        // нужно для чек-листа в тёмной теме Task View, где по макету
+        // заливка прогресс-бара — двухцветный градиент, а не плоский цвет.
         className="h-full rounded-full transition-all duration-500"
-        style={{ width: `${clamped}%`, backgroundColor: colorVar }}
+        style={{ width: `${clamped}%`, background: colorVar }}
       />
     </div>
   );

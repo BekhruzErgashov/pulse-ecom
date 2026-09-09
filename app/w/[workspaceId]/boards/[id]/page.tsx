@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { getBoard, listTasksByBoard, listUsers, listWorkspaceMemberEmails } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
 import { collectDoneWeeks, filterDoneTasksByWeek, getCurrentWeekKey } from "@/lib/week";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { KanbanBoard } from "@/components/kanban-board";
 import { BoardHeaderActions } from "@/components/board-header-actions";
 
@@ -38,9 +38,14 @@ export default async function WorkspaceBoardPage({
   const tasks = filterDoneTasksByWeek(allTasks, doneWeek);
 
   return (
-    <div className="min-h-screen lg:pl-56">
-      <AppSidebar user={user} currentWorkspaceId={workspaceId} />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+    <AppShell
+      user={user}
+      currentWorkspaceId={workspaceId}
+      active="board"
+      eyebrow="Доска"
+      title={board.name}
+      boardHref={`/w/${workspaceId}/boards/${board.id}`}
+    >
         <Link
           href={`/w/${workspaceId}/boards`}
           className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-paper-raised)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink-soft)] shadow-sm transition-colors hover:border-[var(--color-signal)] hover:text-[var(--color-ink)]"
@@ -57,7 +62,6 @@ export default async function WorkspaceBoardPage({
           allUsers={allUsers}
           currentUserEmail={user.email}
         />
-      </main>
-    </div>
+      </AppShell>
   );
 }

@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { getCurrentUser } from "@/lib/session";
 import { getQuestion, listMessages, listUsers } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { QuestionThread } from "@/components/question-thread";
 
 export default async function WorkspaceQuestionPage({
@@ -27,9 +27,14 @@ export default async function WorkspaceQuestionPage({
   if (!(await canAccessWorkspace(user, workspaceId))) notFound();
 
   return (
-    <div className="min-h-screen lg:pl-56">
-      <AppSidebar user={user} currentWorkspaceId={workspaceId} />
-      <main className="mx-auto max-w-2xl px-6 py-10">
+    <AppShell
+      user={user}
+      currentWorkspaceId={workspaceId}
+      active="questions"
+      eyebrow="Личное"
+      title="Вопрос"
+      mainClassName="mx-auto max-w-2xl px-6 py-10"
+    >
         <Link
           href={`/w/${workspaceId}/questions`}
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]"
@@ -42,7 +47,6 @@ export default async function WorkspaceQuestionPage({
           currentUserEmail={user.email}
           allUsers={allUsers}
         />
-      </main>
-    </div>
+      </AppShell>
   );
 }

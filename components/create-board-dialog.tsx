@@ -21,9 +21,13 @@ import type { BoardWithProgress } from "@/lib/models";
 export function CreateBoardDialog({
   workspaceId,
   onCreated,
+  trigger,
 }: {
   workspaceId: string;
   onCreated: (board: BoardWithProgress) => void;
+  /** Кастомная кнопка-триггер (редизайн, boards-screen.tsx, тёмная тема) —
+   *  вместо стандартной <Button>, сама диалоговая логика не меняется. */
+  trigger?: React.ReactNode;
 }) {
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
@@ -64,9 +68,13 @@ export function CreateBoardDialog({
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
-        <Plus className="size-4" /> Новая доска
-      </Button>
+      {trigger ? (
+        <span onClick={() => setOpen(true)}>{trigger}</span>
+      ) : (
+        <Button onClick={() => setOpen(true)}>
+          <Plus className="size-4" /> Новая доска
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>

@@ -16,7 +16,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             "peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--color-signal)] peer-focus-visible:ring-offset-1",
           )}
         >
-          {checked && <Check className="size-3 text-[var(--color-on-accent)]" strokeWidth={3} />}
+          {checked && <Check className="size-3 text-white" strokeWidth={3} />}
         </span>
       </label>
     );

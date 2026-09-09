@@ -157,6 +157,20 @@ export const createTaskAttachmentSchema = z.object({
 });
 export type CreateTaskAttachmentInput = z.infer<typeof createTaskAttachmentSchema>;
 
+
+export const createChecklistItemSchema = z.object({
+  text: z.string().trim().min(1, "Введите текст пункта").max(300),
+});
+export type CreateChecklistItemInput = z.infer<typeof createChecklistItemSchema>;
+
+export const updateChecklistItemSchema = z
+  .object({
+    text: z.string().trim().min(1, "Введите текст пункта").max(300).optional(),
+    done: z.boolean().optional(),
+  })
+  .refine((v) => v.text !== undefined || v.done !== undefined, "Нечего сохранять");
+export type UpdateChecklistItemInput = z.infer<typeof updateChecklistItemSchema>;
+
 export const createQuestionSchema = z.object({
   workspaceId: z.string().min(1),
   title: z.string().min(1, "Введите текст вопроса").max(2000),

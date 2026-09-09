@@ -91,6 +91,18 @@ export interface TaskWithBoard extends Task {
   boardName: string;
 }
 
+/** Пункт чек-листа задачи (экран доски, редизайн под тёмную тему) —
+ *  простой упорядоченный список подпунктов с чекбоксом, без вложенности. */
+export interface TaskChecklistItem {
+  id: string;
+  taskId: string;
+  text: string;
+  done: boolean;
+  position: number;
+  createdBy: string | null;
+  createdAt: string;
+}
+
 /** Скриншот/файл, прикреплённый к задаче. `data` — содержимое в base64, отдаётся наружу только через отдельный raw-эндпоинт, не в списках. */
 export interface TaskAttachment {
   id: string;

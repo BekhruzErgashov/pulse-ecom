@@ -114,6 +114,19 @@ CREATE TABLE IF NOT EXISTS task_attachments (
 
 CREATE INDEX IF NOT EXISTS task_attachments_task_id_idx ON task_attachments(task_id);
 
+-- Чек-лист внутри задачи: подпункты с галочками.
+CREATE TABLE IF NOT EXISTS task_checklist_items (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  done BOOLEAN NOT NULL DEFAULT false,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT REFERENCES users(email),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS task_checklist_items_task_id_idx ON task_checklist_items(task_id);
+
 CREATE TABLE IF NOT EXISTS questions (
   id TEXT PRIMARY KEY,
   workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
