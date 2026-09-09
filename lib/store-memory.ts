@@ -449,6 +449,7 @@ export async function createTask(input: {
     assigneeEmails: [...new Set(input.assigneeEmails.map((e) => e.toLowerCase()))],
     dueDate: input.dueDate,
     completedAt: null,
+    reviewRemindedAt: null,
     archivedAt: null,
     createdAt: now,
     updatedAt: now,
@@ -487,6 +488,7 @@ export async function updateTask(
       | "assigneeEmails"
       | "dueDate"
       | "completedAt"
+      | "reviewRemindedAt"
       | "archivedAt"
     >
   >,
@@ -495,6 +497,36 @@ export async function updateTask(
   if (!task) return undefined;
   Object.assign(task, patch, { updatedAt: new Date().toISOString() });
   return task;
+}
+
+/**
+ * Задачи, застрявшие на этапе «На проверке», которым пора напомнить
+ * постановщику (см. одноимённую функцию в store-db.ts).
+ */
+export async function listTasksAwaitingReview(
+  remindedBefore: string,
+): Promise<{ task: Task; boardName: string; workspaceId: string }[]> {
+  const result: { task: Task; boardName: string; workspaceId: string }[] = [];
+  for (const task of store.tasks.values()) {
+    if (task.stage !== "review" || task.archivedAt || !task.createdBy) continue;
+    if (task.reviewRemindedAt && task.reviewRemindedAt >= remindedBefore) continue;
+    const board = store.boards.get(task.boardId);
+    if (!board) continue;
+    result.push({ task, boardName: board.name, workspaceId: board.workspaceId });
+  }
+  return result.sort((a, b) => (a.task.updatedAt < b.task.updatedAt ? -1 : 1));
+}
+
+/** Удаляет задачи, пролежавшие в архиве дольше заданной даты. Возвращает, сколько удалено. */
+export async function deleteArchivedTasksBefore(before: string): Promise<number> {
+  let removed = 0;
+  for (const [id, task] of Array.from(store.tasks.entries())) {
+    if (task.archivedAt && task.archivedAt < before) {
+      store.tasks.delete(id);
+      removed += 1;
+    }
+  }
+  return removed;
 }
 
 export async function deleteTask(taskId: string): Promise<void> {

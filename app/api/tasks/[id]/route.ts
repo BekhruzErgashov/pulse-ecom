@@ -92,6 +92,33 @@ export async function PATCH(
         ? new Date().toISOString()
         : null;
 
+  /**
+   * Переход на «На проверке»: дедлайн сдвигается на сутки вперёд — проверка
+   * почти никогда не случается день в день, — а отметка напоминаний
+   * сбрасывается: начинается новый цикл ежедневных напоминаний постановщику.
+   * Явный dueDate из запроса имеет приоритет: если пользователь сам поставил
+   * срок в этой же правке, перебивать его нельзя.
+   */
+  const stageBecameReview = Boolean(
+    before && "stage" in parsed.data && parsed.data.stage === "review" && before.stage !== "review",
+  );
+  const stageLeftReview = Boolean(
+    before && "stage" in parsed.data && parsed.data.stage !== "review" && before.stage === "review",
+  );
+
+  const reviewPatch: { dueDate?: string; reviewRemindedAt?: string | null } = {};
+  if (stageBecameReview) {
+    reviewPatch.reviewRemindedAt = null;
+    if (!("dueDate" in parsed.data)) {
+      const due = new Date();
+      due.setDate(due.getDate() + 1);
+      due.setHours(23, 59, 0, 0);
+      reviewPatch.dueDate = due.toISOString();
+    }
+  } else if (stageLeftReview) {
+    reviewPatch.reviewRemindedAt = null;
+  }
+
   // Обе формы поля исполнителя уже сведены в nextAssignees — в UPDATE они
   // не должны попасть как есть.
   const rest = { ...fields };
@@ -105,6 +132,7 @@ export async function PATCH(
       ? { completedAt: completedAtPatch }
       : {}),
     ...(archivedAtPatch !== undefined ? { archivedAt: archivedAtPatch } : {}),
+    ...reviewPatch,
   });
   if (!task) {
     return NextResponse.json({ error: "Задача не найдена" }, { status: 404 });
@@ -223,15 +251,17 @@ export async function PATCH(
           title: `Этап изменён: ${task.title}`,
           body: `${stageLabel(before.stage)} → ${stageLabel(task.stage)} (${user.name})`,
           link: `/w/${board.workspaceId}/boards/${board.id}`,
-          telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
-          telegramKeyboard: [
-            [
-              {
-                text: "Открыть",
-                url: boardDeepLink(board.workspaceId, board.id),
-              },
-            ],
-          ],
+          telegramText:
+            `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>` +
+            (stageBecameReview
+              ? `\n\nСрок сдвинут на ${task.dueDate ? new Date(task.dueDate).toLocaleDateString("ru-RU") : "—"}. Напоминание будет приходить раз в день, пока не нажмёте «Проверено».`
+              : ""),
+          telegramKeyboard: stageBecameReview
+            ? [
+                [{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }],
+                [{ text: "✅ Проверено", callback_data: `review_ok:${task.id}` }],
+              ]
+            : [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
           prefKey: "notifyStageChanges",
         }),
       );

@@ -274,6 +274,38 @@ async function handleCallbackQuery(callbackQuery: {
     return;
   }
 
+  // «Проверено» из напоминания: задача с этапа «На проверке» уходит в «Готово».
+  // Жмёт постановщик — он же и получает эти напоминания.
+  if (data.startsWith("review_ok:")) {
+    const taskId = data.slice("review_ok:".length);
+    const task = await getTask(taskId);
+    if (!task) {
+      await answerCallbackQuery(callbackQuery.id, "Задача не найдена");
+      return;
+    }
+    const user = await getUserByEmail(link.email);
+    const mayReview =
+      !task.createdBy || task.createdBy === link.email || user?.role === "admin";
+    if (!mayReview) {
+      await answerCallbackQuery(callbackQuery.id, "Отметить проверку может только постановщик");
+      return;
+    }
+    await updateTask(taskId, {
+      stage: "done",
+      completedAt: new Date().toISOString(),
+      reviewRemindedAt: null,
+    });
+    await answerCallbackQuery(callbackQuery.id, "Задача закрыта ✅");
+    if (message?.message_id) {
+      await editMessageText(
+        chatId,
+        message.message_id,
+        `✅ <b>${escapeHtml(task.title)}</b>\n\nПроверено и переведено в «Готово».`,
+      );
+    }
+    return;
+  }
+
   if (data.startsWith("done:")) {
     const taskId = data.slice("done:".length);
     const task = await getTask(taskId);

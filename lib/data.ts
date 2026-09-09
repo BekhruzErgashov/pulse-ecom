@@ -58,6 +58,8 @@ export const listTasksCreatedByInWorkspace = impl.listTasksCreatedByInWorkspace;
 export const getTask = impl.getTask;
 export const updateTask = impl.updateTask;
 export const deleteTask = impl.deleteTask;
+export const listTasksAwaitingReview = impl.listTasksAwaitingReview;
+export const deleteArchivedTasksBefore = impl.deleteArchivedTasksBefore;
 
 // Task attachments (скриншоты)
 export const addTaskAttachment = impl.addTaskAttachment;

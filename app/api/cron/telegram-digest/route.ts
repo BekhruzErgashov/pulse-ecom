@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { listTelegramLinks } from "@/lib/data";
 import { sendMessage } from "@/lib/telegram";
 import { buildDailyDigest } from "@/lib/telegram-digest";
+import { purgeOldArchivedTasks, sendReviewReminders } from "@/lib/task-maintenance";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Ежедневная сводка по Telegram: просроченные/сегодняшние задачи и число
+ * Ежедневный cron: сводка по Telegram, напоминания о задачах на проверке и
+ * удаление задач, пролежавших в архиве полгода (см. lib/task-maintenance.ts).
+ *
+ * Сводка по Telegram: просроченные/сегодняшние задачи и число
  * открытых вопросов. Каждому пользователю сообщение уходит только когда
  * текущий UTC-час совпадает с его персональным `digestHourUtc` (по
  * умолчанию 4 — настройки см. в диалоге привязки Telegram) и `notifyDigest`
@@ -48,5 +52,17 @@ export async function GET(request: NextRequest) {
     sent += 1;
   }
 
-  return NextResponse.json({ ok: true, hourUtc: currentHourUtc, due: due.length, sent });
+  // Обслуживание задач не зависит от персонального часа дайджеста: оно
+  // должно отработать один раз за запуск cron, кому бы ни ушла сводка.
+  const reviews = await sendReviewReminders();
+  const purged = await purgeOldArchivedTasks();
+
+  return NextResponse.json({
+    ok: true,
+    hourUtc: currentHourUtc,
+    due: due.length,
+    sent,
+    reviewReminders: reviews,
+    archivedPurged: purged,
+  });
 }

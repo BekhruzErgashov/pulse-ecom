@@ -87,6 +87,7 @@ function rowToTask(row: {
   priority: string;
   due_date: string | null;
   completed_at: Date | null;
+  review_reminded_at: Date | null;
   archived_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -105,6 +106,7 @@ function rowToTask(row: {
     assigneeEmails: [],
     dueDate: row.due_date,
     completedAt: row.completed_at ? row.completed_at.toISOString() : null,
+    reviewRemindedAt: row.review_reminded_at ? row.review_reminded_at.toISOString() : null,
     archivedAt: row.archived_at ? row.archived_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -728,6 +730,7 @@ export async function updateTask(
       | "assigneeEmails"
       | "dueDate"
       | "completedAt"
+      | "reviewRemindedAt"
       | "archivedAt"
     >
   >,
@@ -748,6 +751,7 @@ export async function updateTask(
     priority: "priority",
     dueDate: "due_date",
     completedAt: "completed_at",
+    reviewRemindedAt: "review_reminded_at",
     archivedAt: "archived_at",
   };
   for (const [key, value] of Object.entries(columns)) {
@@ -765,6 +769,45 @@ export async function updateTask(
   );
   if (res.rowCount === 0) return undefined;
   return (await withAssignees([rowToTask(res.rows[0])]))[0];
+}
+
+/**
+ * Задачи, застрявшие на этапе «На проверке», которым пора напомнить
+ * постановщику. `remindedBefore` — граница: напоминаем, если ещё ни разу не
+ * напоминали или напоминали раньше этого момента. Так напоминание уходит
+ * раз в сутки независимо от того, как часто запускается cron.
+ */
+export async function listTasksAwaitingReview(
+  remindedBefore: string,
+): Promise<{ task: Task; boardName: string; workspaceId: string }[]> {
+  const pool = getPool();
+  const res = await pool.query(
+    `SELECT t.*, b.name AS board_name, b.workspace_id
+     FROM tasks t
+     JOIN boards b ON b.id = t.board_id
+     WHERE t.stage = 'review'
+       AND t.archived_at IS NULL
+       AND t.created_by IS NOT NULL
+       AND (t.review_reminded_at IS NULL OR t.review_reminded_at < $1)
+     ORDER BY t.updated_at ASC`,
+    [remindedBefore],
+  );
+  const tasks = await withAssignees(res.rows.map(rowToTask));
+  return tasks.map((task, i) => ({
+    task,
+    boardName: res.rows[i].board_name,
+    workspaceId: res.rows[i].workspace_id,
+  }));
+}
+
+/** Удаляет задачи, пролежавшие в архиве дольше заданной даты. Возвращает, сколько удалено. */
+export async function deleteArchivedTasksBefore(before: string): Promise<number> {
+  const pool = getPool();
+  const res = await pool.query(
+    "DELETE FROM tasks WHERE archived_at IS NOT NULL AND archived_at < $1",
+    [before],
+  );
+  return res.rowCount ?? 0;
 }
 
 export async function deleteTask(taskId: string): Promise<void> {

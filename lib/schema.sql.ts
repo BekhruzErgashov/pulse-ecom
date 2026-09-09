@@ -210,6 +210,9 @@ CREATE TABLE IF NOT EXISTS telegram_link_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Отметка последнего напоминания о проверке (этап «На проверке»).
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS review_reminded_at TIMESTAMPTZ;
+
 -- Исполнители задачи. Раньше исполнитель был один (tasks.assignee_email);
 -- теперь их может быть несколько, и связь живёт здесь. Саму колонку
 -- assignee_email не удаляем — она осталась историческим следом и не читается.
