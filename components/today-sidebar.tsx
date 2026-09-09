@@ -12,12 +12,12 @@ function formatTime(iso: string): string {
 
 function TaskRow({
   task,
-  assignee,
+  assignees,
   onOpen,
   danger,
 }: {
   task: Task;
-  assignee: User | undefined;
+  assignees: User[];
   onOpen: () => void;
   danger?: boolean;
 }) {
@@ -43,7 +43,13 @@ function TaskRow({
           </p>
         )}
       </div>
-      {assignee && <Avatar name={assignee.name} color={assignee.color} size="sm" />}
+      {assignees.length > 0 && (
+        <div className="flex -space-x-1.5">
+          {assignees.slice(0, 3).map((a) => (
+            <Avatar key={a.email} name={a.name} color={a.color} size="sm" />
+          ))}
+        </div>
+      )}
     </button>
   );
 }
@@ -90,7 +96,7 @@ export function TodaySidebar({
               <TaskRow
                 key={t.id}
                 task={t}
-                assignee={t.assigneeEmail ? usersByEmail.get(t.assigneeEmail) : undefined}
+                assignees={t.assigneeEmails.map((e) => usersByEmail.get(e)).filter((u): u is User => Boolean(u))}
                 onOpen={() => onOpen(t)}
                 danger
               />
@@ -115,7 +121,7 @@ export function TodaySidebar({
               <TaskRow
                 key={t.id}
                 task={t}
-                assignee={t.assigneeEmail ? usersByEmail.get(t.assigneeEmail) : undefined}
+                assignees={t.assigneeEmails.map((e) => usersByEmail.get(e)).filter((u): u is User => Boolean(u))}
                 onOpen={() => onOpen(t)}
               />
             ))}

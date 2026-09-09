@@ -244,7 +244,7 @@ export async function deleteUser(
   if (ownsBoard) return { error: "owns_boards" };
 
   for (const task of store.tasks.values()) {
-    if (task.assigneeEmail === normalized) task.assigneeEmail = null;
+    task.assigneeEmails = task.assigneeEmails.filter((e) => e !== normalized);
     if (task.createdBy === normalized) task.createdBy = null;
   }
   for (const question of store.questions.values()) {
@@ -375,7 +375,7 @@ export async function listMyTasksInWorkspace(
   );
   const boardNameById = new Map(boardsInWorkspace.map((b) => [b.id, b.name]));
   return Array.from(store.tasks.values())
-    .filter((t) => boardNameById.has(t.boardId) && t.assigneeEmail === email && !t.archivedAt)
+    .filter((t) => boardNameById.has(t.boardId) && t.assigneeEmails.includes(email) && !t.archivedAt)
     .map((t) => ({ ...t, boardName: boardNameById.get(t.boardId)! }))
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
@@ -435,7 +435,7 @@ export async function createTask(input: {
   kind?: Task["kind"];
   targetCount?: number | null;
   foundCount?: number | null;
-  assigneeEmail: string | null;
+  assigneeEmails: string[];
   dueDate: string | null;
   createdBy?: string | null;
 }): Promise<Task> {
@@ -452,7 +452,7 @@ export async function createTask(input: {
     kind: input.kind ?? "normal",
     targetCount: input.targetCount ?? null,
     foundCount: input.foundCount ?? null,
-    assigneeEmail: input.assigneeEmail,
+    assigneeEmails: [...new Set(input.assigneeEmails.map((e) => e.toLowerCase()))],
     dueDate: input.dueDate,
     completedAt: null,
     archivedAt: null,
@@ -493,7 +493,7 @@ export async function updateTask(
       | "kind"
       | "targetCount"
       | "foundCount"
-      | "assigneeEmail"
+      | "assigneeEmails"
       | "dueDate"
       | "completedAt"
       | "archivedAt"
@@ -947,7 +947,7 @@ export async function startTelegramDraft(input: {
     description: null,
     kind: null,
     priority: null,
-    assigneeEmail: null,
+    assigneeEmails: [],
     dueDate: null,
     calendarMessageId: null,
     calendarMonth: null,
@@ -983,7 +983,7 @@ export async function updateTelegramDraft(
       | "description"
       | "kind"
       | "priority"
-      | "assigneeEmail"
+      | "assigneeEmails"
       | "dueDate"
       | "calendarMessageId"
       | "calendarMonth"
@@ -1156,7 +1156,7 @@ export async function seedIfEmpty(): Promise<void> {
       title,
       description: "",
       priority,
-      assigneeEmail: assignee,
+      assigneeEmails: assignee ? [assignee] : [],
       dueDate: null,
     });
     await updateTask(t.id, { stage, completedAt: stage === "done" ? new Date().toISOString() : null });
@@ -1174,7 +1174,7 @@ export async function seedIfEmpty(): Promise<void> {
     title: "Собрать референсы",
     description: "",
     priority: "low",
-    assigneeEmail: design.email,
+    assigneeEmails: [design.email],
     dueDate: null,
   });
   await updateTask(t1.id, { stage: "done", completedAt: new Date().toISOString() });
@@ -1183,7 +1183,7 @@ export async function seedIfEmpty(): Promise<void> {
     title: "Прототип главной страницы",
     description: "",
     priority: "medium",
-    assigneeEmail: design.email,
+    assigneeEmails: [design.email],
     dueDate: null,
   });
 

@@ -190,7 +190,7 @@ export function KanbanBoard({
       ) {
         return false;
       }
-      if (assigneeFilter !== "all" && t.assigneeEmail !== assigneeFilter) return false;
+      if (assigneeFilter !== "all" && !t.assigneeEmails.includes(assigneeFilter)) return false;
       if (stageFilter === "open" && t.stage === "done") return false;
       if (stageFilter === "closed" && t.stage !== "done") return false;
       return true;
@@ -358,7 +358,7 @@ export function KanbanBoard({
                           <div key={task.id} className={cn(draggingId === task.id && "opacity-40")}>
                             <TaskCard
                               task={task}
-                              assignee={task.assigneeEmail ? usersByEmail.get(task.assigneeEmail) : undefined}
+                              assignees={task.assigneeEmails.map((e) => usersByEmail.get(e)).filter((u): u is User => Boolean(u))}
                               onOpen={() => openEdit(task)}
                               draggable
                               onDragStart={(e) => {

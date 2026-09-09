@@ -36,7 +36,7 @@ function formatDateTime(iso: string): string {
 
 export function TaskCard({
   task,
-  assignee,
+  assignees,
   onOpen,
   draggable,
   onDragStart,
@@ -45,7 +45,7 @@ export function TaskCard({
   showCompletedWeek,
 }: {
   task: Task;
-  assignee: User | undefined;
+  assignees: User[];
   onOpen: () => void;
   draggable: boolean;
   onDragStart: (e: React.DragEvent) => void;
@@ -150,7 +150,20 @@ export function TaskCard({
             </span>
           )}
         </div>
-        {assignee && <Avatar name={assignee.name} color={assignee.color} size="sm" />}
+        {assignees.length > 0 && (
+          // Аватары внахлёст: несколько исполнителей должны помещаться в
+          // карточку, не растягивая её.
+          <div className="flex -space-x-1.5">
+            {assignees.slice(0, 3).map((a) => (
+              <Avatar key={a.email} name={a.name} color={a.color} size="sm" />
+            ))}
+            {assignees.length > 3 && (
+              <span className="flex size-6 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-paper)] text-[10px] font-medium text-[var(--color-ink-soft)]">
+                +{assignees.length - 3}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </button>
   );

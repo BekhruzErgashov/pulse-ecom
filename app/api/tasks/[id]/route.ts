@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { updateTaskSchema } from "@/lib/validation";
-import { createTaskEvent, deleteTask, getBoard, getTask, updateTask } from "@/lib/data";
+import { normalizeAssignees, updateTaskSchema } from "@/lib/validation";
+import {
+  createTaskEvent,
+  deleteTask,
+  getBoard,
+  getTask,
+  updateTask,
+} from "@/lib/data";
 import { getCurrentUser } from "@/lib/session";
 import { boardDeepLink, escapeHtml } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
@@ -45,8 +51,9 @@ export async function PATCH(
     if (!existing) {
       return NextResponse.json({ error: "Задача не найдена" }, { status: 404 });
     }
-    const isAssignee = existing.assigneeEmail === user.email;
-    const isCreatorOrUnknown = !existing.createdBy || existing.createdBy === user.email;
+    const isAssignee = existing.assigneeEmails.includes(user.email);
+    const isCreatorOrUnknown =
+      !existing.createdBy || existing.createdBy === user.email;
 
     if ("resultNote" in parsed.data && !isAssignee) {
       return NextResponse.json(
@@ -56,13 +63,19 @@ export async function PATCH(
     }
     if ("foundCount" in parsed.data && !isAssignee && !isCreatorOrUnknown) {
       return NextResponse.json(
-        { error: "Найдено количество может менять только создатель или исполнитель задачи" },
+        {
+          error:
+            "Найдено количество может менять только создатель или исполнитель задачи",
+        },
         { status: 403 },
       );
     }
   }
 
-  const previousAssignee = existing?.assigneeEmail ?? null;
+  const previousAssignees = existing?.assigneeEmails ?? [];
+  // Клиент может прислать список (assigneeEmails) или одиночного исполнителя
+  // (assigneeEmail) — приводим к одному виду; undefined значит «не менять».
+  const nextAssignees = normalizeAssignees(parsed.data);
 
   // Снимок значений «до». In-memory store (lib/store-memory.ts) отдаёт живой
   // объект задачи и мутирует его внутри updateTask — без копии `existing` и
@@ -75,18 +88,36 @@ export async function PATCH(
   // (см. lib/week.ts). Выставляется только здесь, на сервере, при реальной
   // смене этапа — клиент не может передать его напрямую (нет в схеме).
   let completedAtPatch: string | null | undefined;
-  if (existing && "stage" in parsed.data && parsed.data.stage !== existing.stage) {
-    completedAtPatch = parsed.data.stage === "done" ? new Date().toISOString() : null;
+  if (
+    existing &&
+    "stage" in parsed.data &&
+    parsed.data.stage !== existing.stage
+  ) {
+    completedAtPatch =
+      parsed.data.stage === "done" ? new Date().toISOString() : null;
   }
   // `archived` в теле — это удобный флаг для клиента; саму метку времени
   // проставляет сервер, как и completedAt. В store уходит уже archivedAt.
   const { archived, ...fields } = parsed.data;
   const archivedAtPatch =
-    archived === undefined ? undefined : archived ? new Date().toISOString() : null;
+    archived === undefined
+      ? undefined
+      : archived
+        ? new Date().toISOString()
+        : null;
+
+  // Обе формы поля исполнителя уже сведены в nextAssignees — в UPDATE они
+  // не должны попасть как есть.
+  const rest = { ...fields };
+  delete rest.assigneeEmail;
+  delete rest.assigneeEmails;
 
   const task = await updateTask(id, {
-    ...fields,
-    ...(completedAtPatch !== undefined ? { completedAt: completedAtPatch } : {}),
+    ...rest,
+    ...(nextAssignees !== undefined ? { assigneeEmails: nextAssignees } : {}),
+    ...(completedAtPatch !== undefined
+      ? { completedAt: completedAtPatch }
+      : {}),
     ...(archivedAtPatch !== undefined ? { archivedAt: archivedAtPatch } : {}),
   });
   if (!task) {
@@ -96,18 +127,37 @@ export async function PATCH(
   // Автолог изменений — те же события потом показываются в ленте задачи
   // (комментарии + история вперемешку, см. /api/tasks/[id]/events).
   if (before) {
-    const diffs: { type: TaskEventType; from: string | null; to: string | null }[] = [];
+    const diffs: {
+      type: TaskEventType;
+      from: string | null;
+      to: string | null;
+    }[] = [];
     if ("stage" in parsed.data && task.stage !== before.stage) {
       diffs.push({ type: "stage_changed", from: before.stage, to: task.stage });
     }
     if ("priority" in parsed.data && task.priority !== before.priority) {
-      diffs.push({ type: "priority_changed", from: before.priority, to: task.priority });
+      diffs.push({
+        type: "priority_changed",
+        from: before.priority,
+        to: task.priority,
+      });
     }
-    if ("assigneeEmail" in parsed.data && task.assigneeEmail !== before.assigneeEmail) {
-      diffs.push({ type: "assignee_changed", from: before.assigneeEmail, to: task.assigneeEmail });
+    if (
+      nextAssignees !== undefined &&
+      task.assigneeEmails.join(",") !== before.assigneeEmails.join(",")
+    ) {
+      diffs.push({
+        type: "assignee_changed",
+        from: before.assigneeEmails.join(", ") || null,
+        to: task.assigneeEmails.join(", ") || null,
+      });
     }
     if ("dueDate" in parsed.data && task.dueDate !== before.dueDate) {
-      diffs.push({ type: "due_date_changed", from: before.dueDate, to: task.dueDate });
+      diffs.push({
+        type: "due_date_changed",
+        from: before.dueDate,
+        to: task.dueDate,
+      });
     }
     for (const diff of diffs) {
       after(() =>
@@ -122,38 +172,50 @@ export async function PATCH(
     }
   }
 
-  if (
-    "assigneeEmail" in parsed.data &&
-    task.assigneeEmail &&
-    task.assigneeEmail !== previousAssignee &&
-    task.assigneeEmail !== user.email
-  ) {
+  // Уведомляем только тех, кого добавили этим запросом: при правке других
+  // полей или снятии одного из исполнителей остальных дёргать не за что.
+  const addedAssignees =
+    nextAssignees === undefined
+      ? []
+      : task.assigneeEmails.filter(
+          (e) => !previousAssignees.includes(e) && e !== user.email,
+        );
+  if (addedAssignees.length > 0) {
     const board = await getBoard(task.boardId);
     if (board) {
       // after() — иначе fire-and-forget fetch к Telegram обрывается заморозкой
       // serverless-функции сразу после ответа (Vercel), уведомление теряется
       // или приходит только со следующим «тёплым» вызовом функции.
-      after(() =>
-        notify({
-          userEmail: task.assigneeEmail!,
-          type: "task_assigned",
-          title: `${user.name} назначил(а) вам задачу`,
-          body: task.title,
-          link: `/w/${board.workspaceId}/boards/${board.id}`,
-          telegramText: `📋 <b>${escapeHtml(user.name)}</b> назначил(а) вам задачу:\n<b>${escapeHtml(task.title)}</b>${
-            task.dueDate ? `\nСрок: ${new Date(task.dueDate).toLocaleDateString("ru-RU")}` : ""
-          }`,
-          telegramKeyboard: [
-            [{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }],
-            [
-              { text: "▶️ В работу", callback_data: `start:${task.id}` },
-              { text: "📅 +1 день", callback_data: `snooze:${task.id}` },
-              { text: "✅ Готово", callback_data: `done:${task.id}` },
+      for (const assignee of addedAssignees) {
+        after(() =>
+          notify({
+            userEmail: assignee,
+            type: "task_assigned",
+            title: `${user.name} назначил(а) вам задачу`,
+            body: task.title,
+            link: `/w/${board.workspaceId}/boards/${board.id}`,
+            telegramText: `📋 <b>${escapeHtml(user.name)}</b> назначил(а) вам задачу:\n<b>${escapeHtml(task.title)}</b>${
+              task.dueDate
+                ? `\nСрок: ${new Date(task.dueDate).toLocaleDateString("ru-RU")}`
+                : ""
+            }`,
+            telegramKeyboard: [
+              [
+                {
+                  text: "Открыть",
+                  url: boardDeepLink(board.workspaceId, board.id),
+                },
+              ],
+              [
+                { text: "▶️ В работу", callback_data: `start:${task.id}` },
+                { text: "📅 +1 день", callback_data: `snooze:${task.id}` },
+                { text: "✅ Готово", callback_data: `done:${task.id}` },
+              ],
             ],
-          ],
-          prefKey: "notifyTaskAssigned",
-        }),
-      );
+            prefKey: "notifyTaskAssigned",
+          }),
+        );
+      }
     }
   }
 
@@ -176,7 +238,14 @@ export async function PATCH(
           body: `${stageLabel(before.stage)} → ${stageLabel(task.stage)} (${user.name})`,
           link: `/w/${board.workspaceId}/boards/${board.id}`,
           telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
-          telegramKeyboard: [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
+          telegramKeyboard: [
+            [
+              {
+                text: "Открыть",
+                url: boardDeepLink(board.workspaceId, board.id),
+              },
+            ],
+          ],
           prefKey: "notifyStageChanges",
         }),
       );
@@ -186,28 +255,38 @@ export async function PATCH(
   // Та же смена этапа — исполнителю, если этап поменял не он сам. Постановщик
   // уже получил уведомление выше; когда он же и исполнитель, второе сообщение
   // об одном событии не отправляем.
-  if (
-    before &&
-    "stage" in parsed.data &&
-    task.stage !== before.stage &&
-    task.assigneeEmail &&
-    task.assigneeEmail !== user.email &&
-    task.assigneeEmail !== task.createdBy
-  ) {
+  const stageChanged = Boolean(
+    before && "stage" in parsed.data && task.stage !== before.stage,
+  );
+  const stageRecipients = stageChanged
+    ? task.assigneeEmails.filter(
+        (e) => e !== user.email && e !== task.createdBy,
+      )
+    : [];
+  if (before && stageRecipients.length > 0) {
     const board = await getBoard(task.boardId);
     if (board) {
-      after(() =>
-        notify({
-          userEmail: task.assigneeEmail!,
-          type: "task_stage_changed",
-          title: `Этап изменён: ${task.title}`,
-          body: `${stageLabel(before.stage)} → ${stageLabel(task.stage)} (${user.name})`,
-          link: `/w/${board.workspaceId}/boards/${board.id}`,
-          telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап вашей задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
-          telegramKeyboard: [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
-          prefKey: "notifyStageChanges",
-        }),
-      );
+      for (const assignee of stageRecipients) {
+        after(() =>
+          notify({
+            userEmail: assignee,
+            type: "task_stage_changed",
+            title: `Этап изменён: ${task.title}`,
+            body: `${stageLabel(before.stage)} → ${stageLabel(task.stage)} (${user.name})`,
+            link: `/w/${board.workspaceId}/boards/${board.id}`,
+            telegramText: `🔄 <b>${escapeHtml(user.name)}</b> изменил(а) этап вашей задачи «${escapeHtml(task.title)}»:\n${escapeHtml(stageLabel(before.stage))} → <b>${escapeHtml(stageLabel(task.stage))}</b>`,
+            telegramKeyboard: [
+              [
+                {
+                  text: "Открыть",
+                  url: boardDeepLink(board.workspaceId, board.id),
+                },
+              ],
+            ],
+            prefKey: "notifyStageChanges",
+          }),
+        );
+      }
     }
   }
 
@@ -230,7 +309,7 @@ export async function DELETE(
 
   if (existing && board) {
     const recipients = new Set(
-      [existing.assigneeEmail, existing.createdBy].filter(
+      [...existing.assigneeEmails, existing.createdBy].filter(
         (e): e is string => Boolean(e) && e !== user.email,
       ),
     );

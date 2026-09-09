@@ -281,7 +281,7 @@ async function handleCallbackQuery(callbackQuery: {
       await answerCallbackQuery(callbackQuery.id, "Задача не найдена");
       return;
     }
-    if (task.assigneeEmail !== link.email) {
+    if (!task.assigneeEmails.includes(link.email)) {
       await answerCallbackQuery(callbackQuery.id, "Отмечать можно только свои задачи");
       return;
     }
@@ -306,7 +306,7 @@ async function handleCallbackQuery(callbackQuery: {
   if (data.startsWith("start:")) {
     const taskId = data.slice("start:".length);
     const task = await getTask(taskId);
-    if (!task || task.assigneeEmail !== link.email) {
+    if (!task || !task.assigneeEmails.includes(link.email)) {
       await answerCallbackQuery(callbackQuery.id, "Задача не найдена или не ваша");
       return;
     }
@@ -318,7 +318,7 @@ async function handleCallbackQuery(callbackQuery: {
   if (data.startsWith("snooze:")) {
     const taskId = data.slice("snooze:".length);
     const task = await getTask(taskId);
-    if (!task || task.assigneeEmail !== link.email) {
+    if (!task || !task.assigneeEmails.includes(link.email)) {
       await answerCallbackQuery(callbackQuery.id, "Задача не найдена или не ваша");
       return;
     }

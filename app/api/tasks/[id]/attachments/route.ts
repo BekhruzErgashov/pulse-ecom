@@ -10,7 +10,7 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 /** И создатель, и исполнитель задачи могут прикреплять/удалять скриншоты. */
 function canManageAttachments(task: Task, email: string): boolean {
   const isCreator = !task.createdBy || task.createdBy === email;
-  const isAssignee = task.assigneeEmail === email;
+  const isAssignee = task.assigneeEmails.includes(email);
   return isCreator || isAssignee;
 }
 

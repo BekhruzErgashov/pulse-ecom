@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { createTaskSchema } from "@/lib/validation";
+import { createTaskSchema, normalizeAssignees } from "@/lib/validation";
 import { createTask, createTaskEvent, getBoard } from "@/lib/data";
 import { getCurrentUser } from "@/lib/session";
 import { canAccessWorkspace } from "@/lib/access";
@@ -36,20 +36,22 @@ export async function POST(request: NextRequest) {
     kind: parsed.data.kind ?? "normal",
     targetCount: parsed.data.targetCount ?? null,
     foundCount: parsed.data.foundCount ?? null,
-    assigneeEmail: parsed.data.assigneeEmail ?? null,
+    assigneeEmails: normalizeAssignees(parsed.data) ?? [],
     dueDate: parsed.data.dueDate ?? null,
     createdBy: user.email,
   });
 
   after(() => createTaskEvent({ taskId: task.id, type: "created", authorEmail: user.email }));
 
-  if (task.assigneeEmail && task.assigneeEmail !== user.email) {
+  // Уведомляем каждого назначенного, кроме самого автора: назначить задачу
+  // можно сразу нескольким людям.
+  for (const assignee of task.assigneeEmails.filter((e) => e !== user.email)) {
     // after() гарантирует, что уведомление отправится до заморозки serverless-
     // функции — fire-and-forget (`void`) на Vercel мог обрываться на середине
     // fetch к Telegram API, отсюда задержки/пропажи уведомлений.
     after(() =>
       notify({
-        userEmail: task.assigneeEmail!,
+        userEmail: assignee,
         type: "task_assigned",
         title: `${user.name} назначил(а) вам задачу`,
         body: task.title,

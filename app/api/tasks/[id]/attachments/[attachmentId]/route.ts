@@ -5,7 +5,7 @@ import type { Task } from "@/lib/models";
 
 function canManageAttachments(task: Task, email: string): boolean {
   const isCreator = !task.createdBy || task.createdBy === email;
-  const isAssignee = task.assigneeEmail === email;
+  const isAssignee = task.assigneeEmails.includes(email);
   return isCreator || isAssignee;
 }
 

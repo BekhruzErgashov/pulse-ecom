@@ -207,6 +207,31 @@ CREATE TABLE IF NOT EXISTS telegram_link_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Исполнители задачи. Раньше исполнитель был один (tasks.assignee_email);
+-- теперь их может быть несколько, и связь живёт здесь. Саму колонку
+-- assignee_email не удаляем — она осталась историческим следом и не читается.
+CREATE TABLE IF NOT EXISTS task_assignees (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  email TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS task_assignees_email_idx ON task_assignees(email);
+
+-- Разовый перенос одиночных исполнителей в новую таблицу. Условие «таблица
+-- пуста» делает миграцию идемпотентной: повторный запуск db:migrate не вернёт
+-- обратно исполнителей, которых успели снять с задач.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM task_assignees) THEN
+    INSERT INTO task_assignees (task_id, email)
+      SELECT id, assignee_email FROM tasks WHERE assignee_email IS NOT NULL;
+  END IF;
+END $$;
+
+-- Черновик бота хранит выбранных исполнителей строкой через запятую.
+ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS assignee_emails TEXT;
+
 -- Черновик задачи, которую пользователь собирает пошагово в Telegram
 -- (/newtask). Состояние диалога нельзя держать в памяти процесса: на Vercel
 -- каждый апдейт бота может обработать свой экземпляр serverless-функции.

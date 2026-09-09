@@ -71,7 +71,7 @@ export async function POST(
   // Уведомляем «другую сторону» задачи — если комментирует исполнитель,
   // сообщаем постановщику и наоборот; если оба разные от автора — обоим.
   const recipients = new Set(
-    [task.assigneeEmail, task.createdBy].filter(
+    [...task.assigneeEmails, task.createdBy].filter(
       (e): e is string => Boolean(e) && e !== user.email,
     ),
   );

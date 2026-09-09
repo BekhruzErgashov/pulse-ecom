@@ -38,7 +38,8 @@ async function collectAssignedByMe(
   for (const ws of workspaces) {
     const tasks = await listTasksCreatedByInWorkspace(ws.id, email);
     for (const task of tasks) {
-      if (task.assigneeEmail === email) continue;
+      // Задачи, где автор — сам себе исполнитель и больше никого, живут в /mytasks.
+      if (task.assigneeEmails.length === 1 && task.assigneeEmails[0] === email) continue;
       if (task.stage === "done") {
         doneCount += 1;
         continue;
@@ -52,10 +53,10 @@ async function collectAssignedByMe(
 
 /** Одна строка списка «я поручил»: кому, на какой доске, на каком этапе, когда поставлена и какой срок. */
 async function formatAssignedLine(task: TaskWithBoard, workspaceId: string): Promise<string> {
-  const assignee = task.assigneeEmail ? await getUserByEmail(task.assigneeEmail) : undefined;
-  const assigneeLabel = task.assigneeEmail
-    ? (assignee?.name ?? task.assigneeEmail)
-    : "исполнитель не назначен";
+  const names = await Promise.all(
+    task.assigneeEmails.map(async (email) => (await getUserByEmail(email))?.name ?? email),
+  );
+  const assigneeLabel = names.length > 0 ? names.join(", ") : "исполнитель не назначен";
 
   const now = new Date();
   const due = task.dueDate ? new Date(task.dueDate).toLocaleDateString("ru-RU") : null;

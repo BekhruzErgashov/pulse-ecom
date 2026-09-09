@@ -76,6 +76,15 @@ function formatDue(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString("ru-RU") : "без срока";
 }
 
+/** Имена исполнителей через запятую — «без исполнителя», если список пуст. */
+async function namesOf(emails: string[]): Promise<string> {
+  if (emails.length === 0) return "без исполнителя";
+  const names = await Promise.all(
+    emails.map(async (email) => (await getUserByEmail(email))?.name ?? email),
+  );
+  return names.join(", ");
+}
+
 /** Обрезает текст под лимит подписи кнопки Telegram (64 символа). */
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -229,29 +238,47 @@ async function sortedMembers(workspaceId: string): Promise<string[]> {
   return [...emails].sort();
 }
 
+/**
+ * Исполнителей можно выбрать несколько: кнопки работают как переключатели,
+ * выбранные помечаются галочкой. «Готово» переводит к следующему шагу; если
+ * не выбрать никого, задача создастся без исполнителя.
+ */
 async function promptAssignee(
   chatId: string,
   draft: TelegramDraft,
   messageId: number | undefined,
 ): Promise<void> {
   const members = await sortedMembers(draft.workspaceId!);
-  const rows: InlineButton[][] = [[{ text: "🙋 На себя", callback_data: "nt_as:self" }]];
+  const chosen = new Set(draft.assigneeEmails);
+  const mark = (email: string) => (chosen.has(email) ? "☑️ " : "▫️ ");
+
+  const rows: InlineButton[][] = [
+    [{ text: `${mark(draft.email)}🙋 На себя`, callback_data: "nt_as:self" }],
+  ];
 
   for (const [index, memberEmail] of members.entries()) {
     if (memberEmail === draft.email) continue;
     const user = await getUserByEmail(memberEmail);
     rows.push([
-      { text: truncate(user?.name ?? memberEmail, 60), callback_data: `nt_as:${index}` },
+      {
+        text: `${mark(memberEmail)}${truncate(user?.name ?? memberEmail, 55)}`,
+        callback_data: `nt_as:${index}`,
+      },
     ]);
   }
 
-  rows.push([{ text: "— Без исполнителя", callback_data: "nt_as:none" }]);
+  rows.push([
+    {
+      text: chosen.size > 0 ? `Готово (${chosen.size}) →` : "Без исполнителя →",
+      callback_data: "nt_as_done",
+    },
+  ]);
   rows.push(CANCEL_ROW);
 
   await show(
     chatId,
     messageId,
-    `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nКому назначаем?`,
+    `<b>Новая задача</b>\n«${escapeHtml(draft.title ?? "")}»\n\nКому назначаем? Можно отметить нескольких.`,
     rows,
   );
 }
@@ -261,9 +288,7 @@ async function promptDue(
   draft: TelegramDraft,
   messageId: number | undefined,
 ): Promise<void> {
-  const assigneeLabel = draft.assigneeEmail
-    ? ((await getUserByEmail(draft.assigneeEmail))?.name ?? draft.assigneeEmail)
-    : "без исполнителя";
+  const assigneeLabel = await namesOf(draft.assigneeEmails);
 
   await show(
     chatId,
@@ -373,16 +398,16 @@ async function finishDraft(
     description: draft.description ?? "",
     priority: draft.priority ?? "medium",
     kind: draft.kind ?? "normal",
-    assigneeEmail: draft.assigneeEmail,
+    assigneeEmails: draft.assigneeEmails,
     dueDate: draft.dueDate,
     createdBy: draft.email,
   });
   await createTaskEvent({ taskId: task.id, type: "created", authorEmail: draft.email });
   await deleteTelegramDraft(chatId);
 
-  if (task.assigneeEmail && task.assigneeEmail !== draft.email) {
+  for (const assignee of task.assigneeEmails.filter((e) => e !== draft.email)) {
     await notify({
-      userEmail: task.assigneeEmail,
+      userEmail: assignee,
       type: "task_assigned",
       title: `${author?.name ?? draft.email} назначил(а) вам задачу`,
       body: task.title,
@@ -402,9 +427,7 @@ async function finishDraft(
     });
   }
 
-  const assigneeLabel = task.assigneeEmail
-    ? ((await getUserByEmail(task.assigneeEmail))?.name ?? task.assigneeEmail)
-    : "не назначен";
+  const assigneeLabel = await namesOf(task.assigneeEmails);
 
   const kindLabel = TASK_KINDS.find((k) => k.id === task.kind)?.label ?? task.kind;
   const priorityLabel = PRIORITIES.find((p) => p.id === task.priority)?.label ?? task.priority;
@@ -420,7 +443,7 @@ async function finishDraft(
       "",
       `Доска: ${escapeHtml(board.name)}`,
       `Вид: ${escapeHtml(kindLabel)} · Приоритет: ${escapeHtml(priorityLabel)}`,
-      `Исполнитель: ${escapeHtml(assigneeLabel)}`,
+      `${task.assigneeEmails.length > 1 ? "Исполнители" : "Исполнитель"}: ${escapeHtml(assigneeLabel)}`,
       `Срок: ${formatDue(task.dueDate)}`,
     ].join("\n"),
     [[{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]],
@@ -484,6 +507,7 @@ export async function handleNewTaskCallback(input: {
     data.startsWith("nt_desc:") ||
     data.startsWith("nt_kind:") ||
     data.startsWith("nt_prio:") ||
+    data === "nt_as_done" ||
     data.startsWith("nt_as:") ||
     data.startsWith("nt_due:") ||
     data.startsWith("cal:") ||
@@ -547,18 +571,34 @@ export async function handleNewTaskCallback(input: {
     return true;
   }
 
-  if (data.startsWith("nt_as:")) {
-    const value = data.slice("nt_as:".length);
-    let assigneeEmail: string | null = null;
-    if (value === "self") {
-      assigneeEmail = draft.email;
-    } else if (value !== "none") {
-      const members = await sortedMembers(draft.workspaceId!);
-      assigneeEmail = members[Number(value)] ?? null;
-    }
-    const next = await updateTelegramDraft(chatId, { step: "due", assigneeEmail });
+  if (data === "nt_as_done") {
+    const next = await updateTelegramDraft(chatId, { step: "due" });
     await answerCallbackQuery(callbackQueryId);
     if (next) await promptDue(chatId, next, messageId);
+    return true;
+  }
+
+  if (data.startsWith("nt_as:")) {
+    const value = data.slice("nt_as:".length);
+    let email: string | null = null;
+    if (value === "self") {
+      email = draft.email;
+    } else {
+      const members = await sortedMembers(draft.workspaceId!);
+      email = members[Number(value)] ?? null;
+    }
+    if (!email) {
+      await answerCallbackQuery(callbackQueryId);
+      return true;
+    }
+    // Повторное нажатие снимает отметку — обычное поведение чекбокса.
+    const chosen = new Set(draft.assigneeEmails);
+    if (chosen.has(email)) chosen.delete(email);
+    else chosen.add(email);
+
+    const next = await updateTelegramDraft(chatId, { assigneeEmails: [...chosen] });
+    await answerCallbackQuery(callbackQueryId);
+    if (next) await promptAssignee(chatId, next, messageId);
     return true;
   }
 

@@ -88,7 +88,6 @@ function rowToTask(row: {
   kind: string;
   target_count: number | null;
   found_count: number | null;
-  assignee_email: string | null;
   due_date: string | null;
   completed_at: Date | null;
   archived_at: Date | null;
@@ -107,7 +106,9 @@ function rowToTask(row: {
     kind: (row.kind ?? "normal") as Task["kind"],
     targetCount: row.target_count,
     foundCount: row.found_count,
-    assigneeEmail: row.assignee_email,
+    // Исполнители приезжают отдельным запросом (см. withAssignees) — в самой
+    // строке задачи их нет, связь живёт в task_assignees.
+    assigneeEmails: [],
     dueDate: row.due_date,
     completedAt: row.completed_at ? row.completed_at.toISOString() : null,
     archivedAt: row.archived_at ? row.archived_at.toISOString() : null,
@@ -383,9 +384,7 @@ export async function deleteUser(
   ]);
   if ((ownsBoard.rowCount ?? 0) > 0) return { error: "owns_boards" };
 
-  await pool.query("UPDATE tasks SET assignee_email = NULL WHERE assignee_email = $1", [
-    normalized,
-  ]);
+  await pool.query("DELETE FROM task_assignees WHERE email = $1", [normalized]);
   await pool.query("UPDATE tasks SET created_by = NULL WHERE created_by = $1", [normalized]);
   await pool.query("UPDATE questions SET author_email = NULL WHERE author_email = $1", [
     normalized,
@@ -571,11 +570,12 @@ export async function listMyTasksInWorkspace(
     `SELECT t.*, b.name AS board_name
      FROM tasks t
      JOIN boards b ON b.id = t.board_id
-     WHERE b.workspace_id = $1 AND t.assignee_email = $2 AND t.archived_at IS NULL
+     JOIN task_assignees ta ON ta.task_id = t.id
+     WHERE b.workspace_id = $1 AND ta.email = $2 AND t.archived_at IS NULL
      ORDER BY t.created_at DESC`,
     [workspaceId, email],
   );
-  return res.rows.map((row) => ({ ...rowToTask(row), boardName: row.board_name }));
+  return withAssignees(res.rows.map((row) => ({ ...rowToTask(row), boardName: row.board_name })));
 }
 
 /** Задачи, которые пользователь поставил сам (он автор) — зеркало listMyTasksInWorkspace, где он исполнитель. */
@@ -592,7 +592,7 @@ export async function listTasksCreatedByInWorkspace(
      ORDER BY t.created_at DESC`,
     [workspaceId, email],
   );
-  return res.rows.map((row) => ({ ...rowToTask(row), boardName: row.board_name }));
+  return withAssignees(res.rows.map((row) => ({ ...rowToTask(row), boardName: row.board_name })));
 }
 
 export async function deleteBoard(boardId: string): Promise<void> {
@@ -633,6 +633,39 @@ export async function updateBoard(
 
 // ---------- Tasks ----------
 
+/**
+ * Догружает исполнителей сразу для пачки задач. Отдельным запросом, а не
+ * JOIN-ом: задача с тремя исполнителями иначе размножилась бы на три строки,
+ * и пришлось бы схлопывать их вручную.
+ */
+async function withAssignees<T extends Task>(tasks: T[]): Promise<T[]> {
+  if (tasks.length === 0) return tasks;
+  const pool = getPool();
+  const res = await pool.query<{ task_id: string; email: string }>(
+    "SELECT task_id, email FROM task_assignees WHERE task_id = ANY($1::text[]) ORDER BY email",
+    [tasks.map((t) => t.id)],
+  );
+  const byTask = new Map<string, string[]>();
+  for (const row of res.rows) {
+    const list = byTask.get(row.task_id);
+    if (list) list.push(row.email);
+    else byTask.set(row.task_id, [row.email]);
+  }
+  return tasks.map((task) => ({ ...task, assigneeEmails: byTask.get(task.id) ?? [] }));
+}
+
+/** Полностью заменяет список исполнителей задачи — так проще и надёжнее, чем считать разницу. */
+async function replaceAssignees(taskId: string, emails: string[]): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM task_assignees WHERE task_id = $1", [taskId]);
+  const unique = Array.from(new Set(emails.map((e) => e.toLowerCase()))).filter(Boolean);
+  if (unique.length === 0) return;
+  await pool.query(
+    "INSERT INTO task_assignees (task_id, email) SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING",
+    [taskId, unique],
+  );
+}
+
 export async function createTask(input: {
   boardId: string;
   title: string;
@@ -641,15 +674,15 @@ export async function createTask(input: {
   kind?: Task["kind"];
   targetCount?: number | null;
   foundCount?: number | null;
-  assigneeEmail: string | null;
+  assigneeEmails: string[];
   dueDate: string | null;
   createdBy?: string | null;
 }): Promise<Task> {
   const pool = getPool();
   const taskId = id("task");
   const res = await pool.query(
-    `INSERT INTO tasks (id, board_id, title, description, stage, priority, kind, target_count, found_count, assignee_email, due_date, created_by)
-     VALUES ($1, $2, $3, $4, 'todo', $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO tasks (id, board_id, title, description, stage, priority, kind, target_count, found_count, due_date, created_by)
+     VALUES ($1, $2, $3, $4, 'todo', $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       taskId,
@@ -660,12 +693,12 @@ export async function createTask(input: {
       input.kind ?? "normal",
       input.targetCount ?? null,
       input.foundCount ?? null,
-      input.assigneeEmail,
       input.dueDate,
       input.createdBy ?? null,
     ],
   );
-  return rowToTask(res.rows[0]);
+  await replaceAssignees(taskId, input.assigneeEmails);
+  return { ...rowToTask(res.rows[0]), assigneeEmails: input.assigneeEmails };
 }
 
 export async function listTasksByBoard(boardId: string): Promise<Task[]> {
@@ -674,7 +707,7 @@ export async function listTasksByBoard(boardId: string): Promise<Task[]> {
     "SELECT * FROM tasks WHERE board_id = $1 AND archived_at IS NULL ORDER BY created_at ASC",
     [boardId],
   );
-  return res.rows.map(rowToTask);
+  return withAssignees(res.rows.map(rowToTask));
 }
 
 /** Задачи, убранные в архив — отдельный список, в обычную доску они не попадают. Свежие сверху. */
@@ -684,14 +717,14 @@ export async function listArchivedTasksByBoard(boardId: string): Promise<Task[]>
     "SELECT * FROM tasks WHERE board_id = $1 AND archived_at IS NOT NULL ORDER BY archived_at DESC",
     [boardId],
   );
-  return res.rows.map(rowToTask);
+  return withAssignees(res.rows.map(rowToTask));
 }
 
 export async function getTask(taskId: string): Promise<Task | undefined> {
   const pool = getPool();
   const res = await pool.query("SELECT * FROM tasks WHERE id = $1", [taskId]);
   if (res.rowCount === 0) return undefined;
-  return rowToTask(res.rows[0]);
+  return (await withAssignees([rowToTask(res.rows[0])]))[0];
 }
 
 export async function updateTask(
@@ -707,7 +740,7 @@ export async function updateTask(
       | "kind"
       | "targetCount"
       | "foundCount"
-      | "assigneeEmail"
+      | "assigneeEmails"
       | "dueDate"
       | "completedAt"
       | "archivedAt"
@@ -715,6 +748,10 @@ export async function updateTask(
   >,
 ): Promise<Task | undefined> {
   const pool = getPool();
+  // Исполнители лежат не в строке задачи — вынимаем их из патча до того, как
+  // остальные поля пойдут в UPDATE.
+  const { assigneeEmails, ...columns } = patch;
+  if (assigneeEmails) await replaceAssignees(taskId, assigneeEmails);
   const fields: string[] = [];
   const values: unknown[] = [];
   let i = 1;
@@ -727,12 +764,11 @@ export async function updateTask(
     kind: "kind",
     targetCount: "target_count",
     foundCount: "found_count",
-    assigneeEmail: "assignee_email",
     dueDate: "due_date",
     completedAt: "completed_at",
     archivedAt: "archived_at",
   };
-  for (const [key, value] of Object.entries(patch)) {
+  for (const [key, value] of Object.entries(columns)) {
     const column = columnMap[key];
     if (!column) continue;
     fields.push(`${column} = $${i}`);
@@ -746,7 +782,7 @@ export async function updateTask(
     values,
   );
   if (res.rowCount === 0) return undefined;
-  return rowToTask(res.rows[0]);
+  return (await withAssignees([rowToTask(res.rows[0])]))[0];
 }
 
 export async function deleteTask(taskId: string): Promise<void> {
@@ -1351,7 +1387,7 @@ function rowToTelegramDraft(row: {
   description: string | null;
   kind: string | null;
   priority: string | null;
-  assignee_email: string | null;
+  assignee_emails: string | null;
   due_date: string | null;
   calendar_message_id: string | number | null;
   calendar_month: string | null;
@@ -1369,7 +1405,7 @@ function rowToTelegramDraft(row: {
     description: row.description,
     kind: (row.kind as TelegramDraft["kind"]) ?? null,
     priority: (row.priority as TelegramDraft["priority"]) ?? null,
-    assigneeEmail: row.assignee_email,
+    assigneeEmails: row.assignee_emails ? row.assignee_emails.split(",").filter(Boolean) : [],
     dueDate: row.due_date,
     // BIGINT приходит из pg строкой — приводим к числу, Telegram message_id
     // помещается в Number без потерь.
@@ -1393,7 +1429,7 @@ export async function startTelegramDraft(input: {
   const pool = getPool();
   const expiresAt = new Date(Date.now() + TELEGRAM_DRAFT_TTL_MS).toISOString();
   const res = await pool.query(
-    `INSERT INTO telegram_drafts (chat_id, email, step, workspace_id, board_id, title, assignee_email, due_date, calendar_message_id, calendar_month, editing_task_id, expires_at, updated_at)
+    `INSERT INTO telegram_drafts (chat_id, email, step, workspace_id, board_id, title, assignee_emails, due_date, calendar_message_id, calendar_month, editing_task_id, expires_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL, NULL, $6, $7, now())
      ON CONFLICT (chat_id) DO UPDATE SET
        email = EXCLUDED.email,
@@ -1404,7 +1440,7 @@ export async function startTelegramDraft(input: {
        description = NULL,
        kind = NULL,
        priority = NULL,
-       assignee_email = NULL,
+       assignee_emails = NULL,
        due_date = NULL,
        calendar_message_id = NULL,
        calendar_month = NULL,
@@ -1446,7 +1482,7 @@ const DRAFT_COLUMN: Record<string, string> = {
   description: "description",
   kind: "kind",
   priority: "priority",
-  assigneeEmail: "assignee_email",
+  assigneeEmails: "assignee_emails",
   dueDate: "due_date",
   calendarMessageId: "calendar_message_id",
   calendarMonth: "calendar_month",
@@ -1466,7 +1502,7 @@ export async function updateTelegramDraft(
       | "description"
       | "kind"
       | "priority"
-      | "assigneeEmail"
+      | "assigneeEmails"
       | "dueDate"
       | "calendarMessageId"
       | "calendarMonth"
@@ -1482,7 +1518,8 @@ export async function updateTelegramDraft(
   for (const [key, value] of Object.entries(patch)) {
     const column = DRAFT_COLUMN[key];
     if (!column) continue;
-    values.push(value ?? null);
+    // Список исполнителей черновика хранится одной строкой через запятую.
+    values.push(Array.isArray(value) ? value.join(",") : (value ?? null));
     sets.push(`${column} = $${values.length}`);
   }
   values.push(new Date(Date.now() + TELEGRAM_DRAFT_TTL_MS).toISOString());
@@ -1782,7 +1819,7 @@ export async function seedIfEmpty(): Promise<void> {
       title,
       description: "",
       priority,
-      assigneeEmail: assignee,
+      assigneeEmails: assignee ? [assignee] : [],
       dueDate: null,
     });
     await updateTask(t.id, { stage });
@@ -1800,7 +1837,7 @@ export async function seedIfEmpty(): Promise<void> {
     title: "Собрать референсы",
     description: "",
     priority: "low",
-    assigneeEmail: design.email,
+    assigneeEmails: [design.email],
     dueDate: null,
   });
   await updateTask(t1.id, { stage: "done" });
@@ -1809,7 +1846,7 @@ export async function seedIfEmpty(): Promise<void> {
     title: "Прототип главной страницы",
     description: "",
     priority: "medium",
-    assigneeEmail: design.email,
+    assigneeEmails: [design.email],
     dueDate: null,
   });
 

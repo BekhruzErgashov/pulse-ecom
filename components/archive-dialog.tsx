@@ -136,8 +136,10 @@ export function ArchiveDialog({
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{task.title}</p>
                     <p className="mt-1 text-xs text-[var(--color-ink-soft)]">
-                      {task.assigneeEmail
-                        ? (nameByEmail.get(task.assigneeEmail) ?? task.assigneeEmail)
+                      {task.assigneeEmails.length > 0
+                        ? task.assigneeEmails
+                            .map((e) => nameByEmail.get(e) ?? e)
+                            .join(", ")
                         : "без исполнителя"}
                       {task.archivedAt ? ` · в архиве с ${formatDate(task.archivedAt)}` : ""}
                     </p>

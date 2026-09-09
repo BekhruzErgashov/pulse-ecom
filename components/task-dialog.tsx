@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -194,7 +195,7 @@ export function TaskDialog({
   // с доступом к доске) видит кнопки управления задачей.
   const canFullyEdit = !task || !task.createdBy || task.createdBy === currentUserEmail || isAdmin;
   // Комментарий исполнителя редактирует только сам исполнитель.
-  const canEditComment = Boolean(task && task.assigneeEmail && task.assigneeEmail === currentUserEmail);
+  const canEditComment = Boolean(task && task.assigneeEmails.includes(currentUserEmail));
   // Скриншоты может прикреплять и создатель, и исполнитель задачи.
   const canManageAttachments = canFullyEdit || canEditComment;
 
@@ -211,7 +212,7 @@ export function TaskDialog({
   const [foundCount, setFoundCount] = React.useState(
     task?.foundCount != null ? String(task.foundCount) : "",
   );
-  const [assigneeEmail, setAssigneeEmail] = React.useState(task?.assigneeEmail ?? "");
+  const [assigneeEmails, setAssigneeEmails] = React.useState<string[]>(task?.assigneeEmails ?? []);
   const [dueDate, setDueDate] = React.useState(isoToLocalInput(task?.dueDate ?? null));
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | undefined>();
@@ -365,7 +366,7 @@ export function TaskDialog({
       setKind(task?.kind ?? "normal");
       setTargetCount(task?.targetCount != null ? String(task.targetCount) : "");
       setFoundCount(task?.foundCount != null ? String(task.foundCount) : "");
-      setAssigneeEmail(task?.assigneeEmail ?? "");
+      setAssigneeEmails(task?.assigneeEmails ?? []);
       setDueDate(isoToLocalInput(task?.dueDate ?? null));
       setQuickStage(task?.stage ?? "todo");
       setQuickComment(task?.resultNote ?? "");
@@ -388,7 +389,7 @@ export function TaskDialog({
         kind,
         targetCount: isPromo && targetCount !== "" ? Number(targetCount) : null,
         foundCount: isPromo && foundCount !== "" ? Number(foundCount) : null,
-        assigneeEmail: assigneeEmail || null,
+        assigneeEmails,
         dueDate: localInputToIso(dueDate),
       };
 
@@ -548,8 +549,8 @@ export function TaskDialog({
             setFoundCount={setFoundCount}
             priority={priority}
             setPriority={setPriority}
-            assigneeEmail={assigneeEmail}
-            setAssigneeEmail={setAssigneeEmail}
+            assigneeEmails={assigneeEmails}
+            setAssigneeEmails={setAssigneeEmails}
             dueDate={dueDate}
             setDueDate={setDueDate}
             members={members}
@@ -576,7 +577,7 @@ export function TaskDialog({
 
   const priorityLabel = PRIORITIES.find((p) => p.id === task.priority)?.label;
   const stageLabel = STAGES.find((s) => s.id === task.stage)?.label;
-  const assignee = members.find((m) => m.email === task.assigneeEmail);
+  const assignees = members.filter((m) => task.assigneeEmails.includes(m.email));
   const overdue = checkOverdue(task);
 
   return (
@@ -651,11 +652,17 @@ export function TaskDialog({
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="mb-1 text-xs text-[var(--color-ink-soft)]">Исполнитель</p>
-                  {assignee ? (
-                    <div className="flex items-center gap-2">
-                      <Avatar name={assignee.name} color={assignee.color} size="sm" />
-                      <span>{assignee.name}</span>
+                  <p className="mb-1 text-xs text-[var(--color-ink-soft)]">
+                    {assignees.length > 1 ? "Исполнители" : "Исполнитель"}
+                  </p>
+                  {assignees.length > 0 ? (
+                    <div className="flex flex-col gap-1">
+                      {assignees.map((a) => (
+                        <div key={a.email} className="flex items-center gap-2">
+                          <Avatar name={a.name} color={a.color} size="sm" />
+                          <span>{a.name}</span>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <span className="flex items-center gap-1.5 text-[var(--color-ink-soft)]">
@@ -796,7 +803,7 @@ export function TaskDialog({
                   </p>
                 ) : (
                   <p className="text-sm text-[var(--color-ink-soft)]">
-                    {assignee
+                    {assignees.length > 0
                       ? "Исполнитель пока ничего не написал."
                       : "Комментарий сможет оставить исполнитель, когда он будет назначен."}
                   </p>
@@ -953,8 +960,8 @@ export function TaskDialog({
               setFoundCount={setFoundCount}
               priority={priority}
               setPriority={setPriority}
-              assigneeEmail={assigneeEmail}
-              setAssigneeEmail={setAssigneeEmail}
+              assigneeEmails={assigneeEmails}
+              setAssigneeEmails={setAssigneeEmails}
               dueDate={dueDate}
               setDueDate={setDueDate}
               members={members}
@@ -1006,8 +1013,8 @@ function TaskForm({
   setFoundCount,
   priority,
   setPriority,
-  assigneeEmail,
-  setAssigneeEmail,
+  assigneeEmails,
+  setAssigneeEmails,
   dueDate,
   setDueDate,
   members,
@@ -1029,8 +1036,8 @@ function TaskForm({
   setFoundCount: (v: string) => void;
   priority: Task["priority"];
   setPriority: (v: Task["priority"]) => void;
-  assigneeEmail: string;
-  setAssigneeEmail: (v: string) => void;
+  assigneeEmails: string[];
+  setAssigneeEmails: (v: string[]) => void;
   dueDate: string;
   setDueDate: (v: string) => void;
   members: User[];
@@ -1134,19 +1141,40 @@ function TaskForm({
           </Select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="task-assignee">Исполнитель</Label>
-          <Select
-            id="task-assignee"
-            value={assigneeEmail}
-            onChange={(e) => setAssigneeEmail(e.target.value)}
-          >
-            <option value="">Не назначен</option>
+          <Label>Исполнители</Label>
+          {/* Чекбоксы, а не выпадающий список: на задачу можно назначить
+              несколько человек, и выбранные должны быть видны сразу. */}
+          <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-(--radius-control) border border-[var(--color-line)] p-1.5">
+            {members.length === 0 && (
+              <p className="px-2 py-1 text-sm text-[var(--color-ink-soft)]">
+                В пространстве пока нет участников.
+              </p>
+            )}
             {members.map((m) => (
-              <option key={m.email} value={m.email}>
-                {m.name}
-              </option>
+              <label
+                key={m.email}
+                className="flex cursor-pointer items-center gap-2 rounded-(--radius-control) px-2 py-1.5 hover:bg-[var(--color-paper)]"
+              >
+                <Checkbox
+                  checked={assigneeEmails.includes(m.email)}
+                  onChange={() =>
+                    setAssigneeEmails(
+                      assigneeEmails.includes(m.email)
+                        ? assigneeEmails.filter((e) => e !== m.email)
+                        : [...assigneeEmails, m.email],
+                    )
+                  }
+                />
+                <Avatar name={m.name} color={m.color} size="sm" />
+                <span className="text-sm">{m.name}</span>
+              </label>
             ))}
-          </Select>
+          </div>
+          <p className="text-xs text-[var(--color-ink-soft)]">
+            {assigneeEmails.length === 0
+              ? "Никто не назначен"
+              : `Выбрано: ${assigneeEmails.length}`}
+          </p>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="task-due">Срок (дата и время)</Label>

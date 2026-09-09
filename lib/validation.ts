@@ -99,7 +99,10 @@ export const createTaskSchema = z.object({
   kind: z.enum(["normal", "hammers", "superhits"]).default("normal"),
   targetCount: nullableCount.default(null),
   foundCount: nullableCount.default(null),
-  assigneeEmail: z.string().email().nullable().optional().default(null),
+  // Исполнителей может быть несколько. Одиночное assigneeEmail оставлено для
+  // совместимости со старыми клиентами — сервер приводит его к массиву.
+  assigneeEmails: z.array(z.string().email()).optional(),
+  assigneeEmail: z.string().email().nullable().optional(),
   dueDate: z.string().nullable().optional().default(null),
 });
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
@@ -113,6 +116,7 @@ export const updateTaskSchema = z.object({
   kind: z.enum(["normal", "hammers", "superhits"]).optional(),
   targetCount: nullableCount,
   foundCount: nullableCount,
+  assigneeEmails: z.array(z.string().email()).optional(),
   assigneeEmail: z.string().email().nullable().optional(),
   dueDate: z.string().nullable().optional(),
   /** true — убрать в архив, false — вернуть из архива. Саму метку времени проставляет сервер. */
@@ -189,3 +193,21 @@ export const submitGameScoreSchema = z.object({
   score: z.number().int().min(0).max(10_000_000),
 });
 export type SubmitGameScoreInput = z.infer<typeof submitGameScoreSchema>;
+
+/**
+ * Приводит две формы поля исполнителя к одному массиву: новый клиент шлёт
+ * assigneeEmails, старый — одиночный assigneeEmail. Возвращает undefined,
+ * если исполнителей в запросе нет вовсе (значит, поле не меняется).
+ */
+export function normalizeAssignees(input: {
+  assigneeEmails?: string[];
+  assigneeEmail?: string | null;
+}): string[] | undefined {
+  if (input.assigneeEmails) {
+    return Array.from(new Set(input.assigneeEmails.map((e) => e.toLowerCase())));
+  }
+  if (input.assigneeEmail !== undefined) {
+    return input.assigneeEmail ? [input.assigneeEmail.toLowerCase()] : [];
+  }
+  return undefined;
+}

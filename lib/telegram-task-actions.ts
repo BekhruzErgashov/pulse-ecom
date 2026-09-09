@@ -78,7 +78,9 @@ async function buildCard(
   offset: number,
 ): Promise<{ text: string; keyboard: InlineButton[][] }> {
   const board = await getBoard(task.boardId);
-  const assignee = task.assigneeEmail ? await getUserByEmail(task.assigneeEmail) : undefined;
+  const assigneeNames = await Promise.all(
+    task.assigneeEmails.map(async (email) => (await getUserByEmail(email))?.name ?? email),
+  );
 
   const lines = [
     `<b>${escapeHtml(task.title)}</b>`,
@@ -87,8 +89,8 @@ async function buildCard(
     `Доска: ${escapeHtml(board?.name ?? "—")}`,
     `Этап: ${escapeHtml(label(STAGES, task.stage))}`,
     `Вид: ${escapeHtml(label(TASK_KINDS, task.kind))} · Приоритет: ${escapeHtml(label(PRIORITIES, task.priority))}`,
-    `Исполнитель: ${escapeHtml(
-      task.assigneeEmail ? (assignee?.name ?? task.assigneeEmail) : "не назначен",
+    `${assigneeNames.length > 1 ? "Исполнители" : "Исполнитель"}: ${escapeHtml(
+      assigneeNames.length > 0 ? assigneeNames.join(", ") : "не назначен",
     )}`,
     `Срок: ${task.dueDate ? new Date(task.dueDate).toLocaleDateString("ru-RU") : "без срока"}`,
   ];
