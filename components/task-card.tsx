@@ -3,6 +3,7 @@
 import { CalendarCheck, CalendarClock, Flame, Layers, MessageSquareText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Task, User } from "@/lib/models";
 import { PRIORITIES } from "@/lib/schema";
 import { isOverdue as checkOverdue } from "@/lib/task-sort";
@@ -37,6 +38,8 @@ export function TaskCard({
   onDragEnd,
   boardName,
   showCompletedWeek,
+  selected,
+  onToggleSelect,
 }: {
   task: Task;
   assignees: User[];
@@ -51,13 +54,17 @@ export function TaskCard({
    *  задачи нескольких недель (фильтр недели = «Все недели»), иначе
    *  недвусмысленно и так — все карточки одной недели. */
   showCompletedWeek?: boolean;
+  /** Карточка отмечена для группового действия. */
+  selected?: boolean;
+  /** Не передан — режима выделения нет и чекбокс не рисуется. */
+  onToggleSelect?: () => void;
 }) {
   const priorityLabel = PRIORITIES.find((p) => p.id === task.priority)?.label;
   const isUrgent = task.priority === "urgent";
   const isOverdue = checkOverdue(task);
   const completedWeekKey = showCompletedWeek ? getTaskCompletedWeekKey(task) : null;
 
-  return (
+  const card = (
     <button
       type="button"
       onClick={onOpen}
@@ -67,11 +74,12 @@ export function TaskCard({
       className={cn(
         "panel card-hover flex w-full cursor-grab flex-col gap-2 p-3 text-left active:cursor-grabbing",
         isUrgent && "border-l-[3px] border-l-[var(--color-urgent)] bg-[var(--color-urgent-soft)]/40",
+        selected && "border-[var(--color-signal)] ring-1 ring-[var(--color-signal)]",
       )}
     >
       <div className="flex items-start gap-1.5">
         {isUrgent && <Flame className="mt-0.5 size-3.5 shrink-0 text-[var(--color-urgent)]" />}
-        <p className="text-sm font-medium leading-snug">{task.title}</p>
+        <p className={cn("text-sm font-medium leading-snug", onToggleSelect && "pr-6")}>{task.title}</p>
       </div>
 
       {boardName && (
@@ -130,5 +138,25 @@ export function TaskCard({
         )}
       </div>
     </button>
+  );
+
+  if (!onToggleSelect) return card;
+
+  // Чекбокс — сосед кнопки, а не её потомок: интерактивный элемент внутри
+  // <button> ломает разметку и не ловит клик.
+  return (
+    <div className="relative">
+      {card}
+      <label
+        className="absolute right-2.5 top-2.5 z-10 flex cursor-pointer items-center"
+        title="Выделить задачу"
+      >
+        <Checkbox
+          checked={Boolean(selected)}
+          onChange={onToggleSelect}
+          aria-label={`Выделить задачу «${task.title}»`}
+        />
+      </label>
+    </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Plus, Inbox, Search, SearchX } from "lucide-react";
+import { Archive, ListChecks, Plus, Inbox, Search, SearchX, Trash2, X } from "lucide-react";
 import { StageRail } from "@/components/stage-rail";
 import { StatusFilterDropdown, type StatusFilterValue } from "@/components/status-filter-dropdown";
 import { TaskCard } from "@/components/task-card";
@@ -10,6 +10,8 @@ import { TaskDialog } from "@/components/task-dialog";
 import { TASKS_CHANGED_EVENT } from "@/lib/board-events";
 import { TodaySidebar } from "@/components/today-sidebar";
 import { WeekPicker } from "@/components/week-picker";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { STAGES, type StageId } from "@/lib/schema";
@@ -48,6 +50,9 @@ export function KanbanBoard({
   const [createStage, setCreateStage] = React.useState<StageId>("todo");
   const [dragOverStage, setDragOverStage] = React.useState<StageId | null>(null);
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
+  // Групповые действия: пока ничего не выделено, панель действий скрыта.
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [bulkPending, setBulkPending] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [assigneeFilter, setAssigneeFilter] = React.useState<string>("all");
   const [stageFilter, setStageFilter] = React.useState<StatusFilterValue>("all");
@@ -247,6 +252,96 @@ export function KanbanBoard({
     }
   }
 
+  function toggleSelect(taskId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }
+
+  /** Отметить или снять сразу список задач — колонку целиком или всю доску. */
+  function toggleMany(ids: string[], select: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Групповое действие — это те же запросы к /api/tasks/[id], только пачкой.
+   * Отдельный «массовый» эндпоинт не заводим намеренно: в нём пришлось бы
+   * дублировать права, автолог истории и уведомления.
+   */
+  async function runBulk(
+    action: (taskId: string) => Promise<Response>,
+    onSuccess: (ids: string[]) => void,
+    okMessage: (n: number) => string,
+  ) {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    setBulkPending(true);
+    try {
+      const results = await Promise.all(ids.map((id) => action(id).catch(() => null)));
+      const okIds = ids.filter((_, i) => results[i]?.ok);
+      const failed = ids.length - okIds.length;
+      onSuccess(okIds);
+      setSelectedIds(new Set());
+      if (okIds.length > 0) toast.success(okMessage(okIds.length));
+      if (failed > 0) toast.error("Не удалось обработать: " + failed);
+    } finally {
+      setBulkPending(false);
+    }
+  }
+
+  function bulkMove(stage: StageId) {
+    void runBulk(
+      (id) =>
+        fetch("/api/tasks/" + id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage }),
+        }),
+      (ids) => setTasks((prev) => prev.map((t) => (ids.includes(t.id) ? { ...t, stage } : t))),
+      (n) => "Перенесено задач: " + n,
+    );
+  }
+
+  function bulkArchive() {
+    void runBulk(
+      (id) =>
+        fetch("/api/tasks/" + id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        }),
+      (ids) => setTasks((prev) => prev.filter((t) => !ids.includes(t.id))),
+      (n) => "В архив отправлено: " + n,
+    );
+  }
+
+  function bulkDelete() {
+    toast("Удалить задач: " + selectedIds.size + "?", {
+      description:
+        "Восстановить не получится. Если задачи могут ещё понадобиться — отправьте их в архив.",
+      action: {
+        label: "Удалить",
+        onClick: () =>
+          void runBulk(
+            (id) => fetch("/api/tasks/" + id, { method: "DELETE" }),
+            (ids) => setTasks((prev) => prev.filter((t) => !ids.includes(t.id))),
+            (n) => "Удалено задач: " + n,
+          ),
+      },
+      cancel: { label: "Отмена", onClick: () => {} },
+    });
+  }
+
   function handleDrop(e: React.DragEvent, stage: StageId) {
     e.preventDefault();
     setDragOverStage(null);
@@ -277,6 +372,23 @@ export function KanbanBoard({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => {
+                  const ids = visibleTasks.map((t) => t.id);
+                  const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+                  toggleMany(ids, !allSelected);
+                }}
+                disabled={visibleTasks.length === 0}
+              >
+                <ListChecks className="size-3.5" />
+                {visibleTasks.length > 0 && visibleTasks.every((t) => selectedIds.has(t.id))
+                  ? "Снять все"
+                  : "Выбрать все"}
+              </Button>
+
               <StatusFilterDropdown value={stageFilter} onChange={setStageFilter} />
 
               <Select
@@ -320,7 +432,7 @@ export function KanbanBoard({
                     )}
                   >
                     <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         <span
                           className="size-1.5 rounded-full"
                           style={{ backgroundColor: STAGE_ACCENT[stage.id] }}
@@ -330,7 +442,20 @@ export function KanbanBoard({
                           {stageTasks.length}
                         </span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {/* Чекбокс колонки появляется, только когда выделение уже
+                            начато: иначе он занимал бы место в и без того тесном
+                            заголовке при каждом заходе на доску. */}
+                        {selectedIds.size > 0 && stageTasks.length > 0 && (
+                          <Checkbox
+                            checked={stageTasks.every((t) => selectedIds.has(t.id))}
+                            onChange={() => {
+                              const ids = stageTasks.map((t) => t.id);
+                              toggleMany(ids, !ids.every((id) => selectedIds.has(id)));
+                            }}
+                            aria-label={`Выделить все задачи в «${stage.label}»`}
+                          />
+                        )}
                         {stage.id === "done" && (stageFilter === "all" || stageFilter === "closed") && (
                           <WeekPicker value={doneWeek} weeks={doneWeeks} onChange={setDoneWeek} />
                         )}
@@ -367,6 +492,8 @@ export function KanbanBoard({
                               }}
                               onDragEnd={() => setDraggingId(null)}
                               showCompletedWeek={stage.id === "done" && doneWeek === ALL_WEEKS}
+                              selected={selectedIds.has(task.id)}
+                              onToggleSelect={() => toggleSelect(task.id)}
                             />
                           </div>
                         ))
@@ -383,6 +510,51 @@ export function KanbanBoard({
           <TodaySidebar tasks={tasks} usersByEmail={usersByEmail} onOpen={openEdit} />
         </aside>
       </div>
+
+      {selectedIds.size > 0 && (
+        // Панель групповых действий: появляется только когда что-то отмечено,
+        // висит поверх доски, чтобы не прыгать за списком при прокрутке.
+        <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-wrap items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-paper-raised)] px-3 py-2 shadow-lg">
+          <span className="px-1 text-sm font-medium">Выбрано: {selectedIds.size}</span>
+          <Select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) bulkMove(e.target.value as StageId);
+              e.target.value = "";
+            }}
+            className="h-8 w-auto text-xs"
+            aria-label="Перенести выбранные задачи в этап"
+            disabled={bulkPending}
+          >
+            <option value="">Перенести в…</option>
+            {STAGES.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+          <Button variant="outline" size="sm" onClick={bulkArchive} disabled={bulkPending}>
+            <Archive className="size-3.5" /> В архив
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={bulkDelete}
+            disabled={bulkPending}
+            className="text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]"
+          >
+            <Trash2 className="size-3.5" /> Удалить
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={bulkPending}
+          >
+            <X className="size-3.5" /> Снять
+          </Button>
+        </div>
+      )}
 
       <TaskDialog
         open={dialogOpen}
