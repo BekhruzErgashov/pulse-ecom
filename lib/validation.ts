@@ -118,11 +118,41 @@ export const addMemberSchema = z.object({
 // Скриншоты к задаче: файл передаётся как base64 (без префикса data:...),
 // размер/количество проверяются отдельно в API-роуте (там доступна длина
 // декодированного буфера и текущее число вложений задачи).
+/**
+ * Что можно прикреплять к задаче: картинки (скриншоты — исходный сценарий) и
+ * ходовые рабочие форматы. Список закрытый, а не «всё подряд»: файлы лежат в
+ * той же базе, что и задачи, и раздаются нашим же роутом — принимать
+ * произвольные типы значит раздавать их обратно браузеру.
+ */
+export const ALLOWED_ATTACHMENT_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip",
+  "application/x-zip-compressed",
+  "application/json",
+] as const;
+
 export const createTaskAttachmentSchema = z.object({
-  filename: z.string().trim().min(1).max(200).default("screenshot.png"),
+  filename: z.string().trim().min(1).max(200).default("file"),
   contentType: z
     .string()
-    .regex(/^image\/(png|jpe?g|gif|webp|svg\+xml)$/i, "Разрешены только изображения"),
+    .refine(
+      (value) => (ALLOWED_ATTACHMENT_TYPES as readonly string[]).includes(value.toLowerCase()),
+      "Такой тип файла прикрепить нельзя",
+    ),
   data: z.string().min(1, "Пустой файл"),
 });
 export type CreateTaskAttachmentInput = z.infer<typeof createTaskAttachmentSchema>;

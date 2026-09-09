@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import {
   Archive,
+  FileText,
   CalendarClock,
   Check,
   ChevronDown,
@@ -36,6 +37,7 @@ import { isOverdue as checkOverdue } from "@/lib/task-sort";
 import { linkifyText } from "@/lib/linkify";
 import type { Task, TaskAttachmentMeta, TaskEvent, User } from "@/lib/models";
 import { cn } from "@/lib/utils";
+import { ALLOWED_ATTACHMENT_TYPES } from "@/lib/validation";
 
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
@@ -57,6 +59,62 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+/**
+ * Плитка вложения: картинки показываем превью, остальные файлы — иконкой с
+ * названием. Используется и для уже сохранённых вложений, и для тех, что
+ * выбраны в форме новой задачи и ещё не отправлены на сервер.
+ */
+function AttachmentTile({
+  href,
+  filename,
+  contentType,
+  sizeBytes,
+  onRemove,
+}: {
+  href: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  onRemove?: () => void;
+}) {
+  const isImage = contentType.startsWith("image/");
+  const title = `${filename} · ${formatFileSize(sizeBytes)}`;
+
+  return (
+    <div className="group relative">
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={title}
+        className="block h-20 w-20 overflow-hidden rounded-(--radius-control) border border-[var(--color-line)]"
+      >
+        {isImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={href} alt={filename} className="h-full w-full object-cover" />
+        ) : (
+          <span className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[var(--color-paper)] p-1 text-center">
+            <FileText className="size-5 text-[var(--color-ink-soft)]" />
+            <span className="line-clamp-2 break-all text-[10px] leading-tight text-[var(--color-ink-soft)]">
+              {filename}
+            </span>
+          </span>
+        )}
+      </a>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Удалить файл «${filename}»`}
+          className="absolute -right-1.5 -top-1.5 hidden size-5 items-center justify-center rounded-full bg-[var(--color-danger)] text-[var(--color-on-accent)] group-hover:flex"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </div>
+  );
 }
 
 interface TaskDialogProps {
@@ -216,6 +274,12 @@ export function TaskDialog({
   const [quickPending, setQuickPending] = React.useState(false);
 
   const [attachments, setAttachments] = React.useState<TaskAttachmentMeta[]>([]);
+  // Файлы, выбранные в форме новой задачи. Отправить их сразу нельзя — у
+  // вложения обязателен taskId, а задачи ещё нет; поэтому держим их здесь и
+  // загружаем сразу после успешного создания.
+  const [pendingFiles, setPendingFiles] = React.useState<
+    { filename: string; contentType: string; data: string; sizeBytes: number }[]
+  >([]);
   const [attachmentsLoading, setAttachmentsLoading] = React.useState(false);
   const [uploadPending, setUploadPending] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -239,6 +303,7 @@ export function TaskDialog({
         .finally(() => setAttachmentsLoading(false));
     } else {
       setAttachments([]);
+      setPendingFiles([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task?.id]);
@@ -283,27 +348,51 @@ export function TaskDialog({
     }
   }
 
+  /**
+   * Выбранные файлы. У существующей задачи отправляем сразу, у новой —
+   * складываем в pendingFiles и грузим после её создания (у вложения
+   * обязателен taskId).
+   */
   async function uploadAttachments(files: File[] | FileList) {
-    if (!task) return;
-    const images = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (images.length === 0) return;
+    const picked = Array.from(files).filter((f) =>
+      (ALLOWED_ATTACHMENT_TYPES as readonly string[]).includes(f.type.toLowerCase()),
+    );
+    const rejected = Array.from(files).length - picked.length;
+    if (rejected > 0) toast.error("Такой тип файла прикрепить нельзя: " + rejected);
+    if (picked.length === 0) return;
+
     setUploadPending(true);
     try {
-      for (const file of images) {
-        if (attachments.length >= MAX_ATTACHMENTS) {
-          toast.error(`Не больше ${MAX_ATTACHMENTS} файлов на задачу`);
+      for (const file of picked) {
+        const already = task ? attachments.length : pendingFiles.length;
+        if (already >= MAX_ATTACHMENTS) {
+          toast.error("Не больше " + MAX_ATTACHMENTS + " файлов на задачу");
           break;
         }
         if (file.size > MAX_ATTACHMENT_SIZE) {
-          toast.error(`Файл «${file.name}» больше 5 МБ`);
+          toast.error("Файл «" + file.name + "» больше 5 МБ");
           continue;
         }
         const data = await fileToBase64(file);
-        const res = await fetch(`/api/tasks/${task.id}/attachments`, {
+
+        if (!task) {
+          setPendingFiles((prev) => [
+            ...prev,
+            {
+              filename: file.name || "file",
+              contentType: file.type,
+              data,
+              sizeBytes: file.size,
+            },
+          ]);
+          continue;
+        }
+
+        const res = await fetch("/api/tasks/" + task.id + "/attachments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            filename: file.name || "screenshot.png",
+            filename: file.name || "file",
             contentType: file.type,
             data,
           }),
@@ -321,6 +410,26 @@ export function TaskDialog({
     }
   }
 
+  /** Догружает файлы, выбранные до создания задачи, когда её id уже известен. */
+  async function uploadPendingTo(taskId: string) {
+    for (const file of pendingFiles) {
+      const res = await fetch("/api/tasks/" + taskId + "/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.filename,
+          contentType: file.contentType,
+          data: file.data,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        toast.error("Файл «" + file.filename + "» не прикрепился: " + (errData?.error ?? "ошибка"));
+      }
+    }
+    setPendingFiles([]);
+  }
+
   async function handleDeleteAttachment(attachmentId: string) {
     if (!task) return;
     const res = await fetch(`/api/tasks/${task.id}/attachments/${attachmentId}`, {
@@ -334,6 +443,7 @@ export function TaskDialog({
     setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
   }
 
+  /** Ctrl+V скриншота — исходный сценарий; из буфера прилетают именно картинки. */
   function handleAttachmentsPaste(e: React.ClipboardEvent) {
     if (!canManageAttachments) return;
     const files = Array.from(e.clipboardData.items)
@@ -411,8 +521,15 @@ export function TaskDialog({
           return;
         }
         const data = await res.json();
+        // Сначала файлы, потом закрытие: иначе диалог исчезнет раньше, чем
+        // загрузка закончится, и ошибку по конкретному файлу никто не увидит.
+        if (pendingFiles.length > 0) await uploadPendingTo(data.task.id);
         onCreated?.(data.task);
-        toast.success("Задача создана");
+        toast.success(
+          pendingFiles.length > 0
+            ? `Задача создана, файлов прикреплено: ${pendingFiles.length}`
+            : "Задача создана",
+        );
         onOpenChange(false);
       }
     } finally {
@@ -501,6 +618,85 @@ export function TaskDialog({
     }
   }
 
+  // Блок вложений одинаков для формы новой задачи и для просмотра готовой —
+  // отличается только источник: у новой файлы лежат в pendingFiles, у готовой
+  // приходят с сервера.
+  const attachedCount = task ? attachments.length : pendingFiles.length;
+  const attachmentsSection = (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-[var(--color-ink-soft)]">
+          Файлы {attachedCount > 0 && `(${attachedCount}/${MAX_ATTACHMENTS})`}
+        </p>
+        {canManageAttachments && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadPending || attachedCount >= MAX_ATTACHMENTS}
+          >
+            {uploadPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Paperclip className="size-3.5" />
+            )}
+            Прикрепить
+          </Button>
+        )}
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ALLOWED_ATTACHMENT_TYPES.join(",")}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) void uploadAttachments(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      {attachmentsLoading ? (
+        <p className="text-xs text-[var(--color-ink-soft)]">Загрузка…</p>
+      ) : attachedCount > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {task
+            ? attachments.map((a) => (
+                <AttachmentTile
+                  key={a.id}
+                  href={`/api/tasks/${task.id}/attachments/${a.id}`}
+                  filename={a.filename}
+                  contentType={a.contentType}
+                  sizeBytes={a.sizeBytes}
+                  onRemove={
+                    canManageAttachments || a.uploadedBy === currentUserEmail
+                      ? () => handleDeleteAttachment(a.id)
+                      : undefined
+                  }
+                />
+              ))
+            : pendingFiles.map((f, i) => (
+                <AttachmentTile
+                  key={`${f.filename}-${i}`}
+                  href={`data:${f.contentType};base64,${f.data}`}
+                  filename={f.filename}
+                  contentType={f.contentType}
+                  sizeBytes={f.sizeBytes}
+                  onRemove={() => setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                />
+              ))}
+        </div>
+      ) : (
+        canManageAttachments && (
+          <p className="text-xs text-[var(--color-ink-soft)]">
+            Вставьте скриншот из буфера (Ctrl+V) или нажмите «Прикрепить» — картинки, PDF,
+            документы, таблицы, архивы. До {MAX_ATTACHMENTS} файлов, каждый до 5 МБ.
+          </p>
+        )
+      )}
+    </div>
+  );
+
   if (!task) {
     // Создание новой задачи — сразу форма, режима просмотра ещё нет.
     return (
@@ -526,6 +722,9 @@ export function TaskDialog({
             stage={stage}
             setStage={setStage}
           />
+          <div className="border-t border-[var(--color-line)] pt-4" onPaste={handleAttachmentsPaste}>
+            {attachmentsSection}
+          </div>
           <form onSubmit={handleSubmit}>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -615,79 +814,7 @@ export function TaskDialog({
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 border-t border-[var(--color-line)] pt-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-[var(--color-ink-soft)]">
-                    Скриншоты {attachments.length > 0 && `(${attachments.length}/${MAX_ATTACHMENTS})`}
-                  </p>
-                  {canManageAttachments && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadPending || attachments.length >= MAX_ATTACHMENTS}
-                    >
-                      {uploadPending ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Paperclip className="size-3.5" />
-                      )}
-                      Прикрепить
-                    </Button>
-                  )}
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files) void uploadAttachments(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-                {attachmentsLoading ? (
-                  <p className="text-xs text-[var(--color-ink-soft)]">Загрузка…</p>
-                ) : attachments.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {attachments.map((a) => (
-                      <div key={a.id} className="group relative">
-                        <a
-                          href={`/api/tasks/${task.id}/attachments/${a.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={`${a.filename} · ${formatFileSize(a.sizeBytes)}`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`/api/tasks/${task.id}/attachments/${a.id}`}
-                            alt={a.filename}
-                            className="h-20 w-20 rounded-(--radius-control) border border-[var(--color-line)] object-cover"
-                          />
-                        </a>
-                        {(canManageAttachments || a.uploadedBy === currentUserEmail) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteAttachment(a.id)}
-                            aria-label="Удалить скриншот"
-                            className="absolute -right-1.5 -top-1.5 hidden size-5 items-center justify-center rounded-full bg-[var(--color-danger)] text-[var(--color-on-accent)] group-hover:flex"
-                          >
-                            <X className="size-3" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  canManageAttachments && (
-                    <p className="text-xs text-[var(--color-ink-soft)]">
-                      Вставьте скриншот из буфера обмена (Ctrl+V) или нажмите «Прикрепить».
-                    </p>
-                  )
-                )}
-              </div>
+              <div className="border-t border-[var(--color-line)] pt-4">{attachmentsSection}</div>
 
               <div className="flex flex-col gap-1.5 border-t border-[var(--color-line)] pt-4">
                 <Label htmlFor="quick-stage">Этап</Label>
