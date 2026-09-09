@@ -185,9 +185,14 @@ export function TaskDialog({
   onArchived,
 }: TaskDialogProps) {
   const isEdit = Boolean(task);
+  // Администратор управляет любой задачей: у человека может быть два
+  // аккаунта, а коллега — уйти из команды, и его задачи иначе остались бы
+  // без хозяина (ни изменить, ни архивировать, ни удалить). Роль берём из
+  // списка участников — отдельный проп для этого не нужен.
+  const isAdmin = members.some((m) => m.email === currentUserEmail && m.role === "admin");
   // Создатель (или если создатель не известен/удалён — доступно всем
-  // с доступом к доске) видит кнопку редактирования полей задачи.
-  const canFullyEdit = !task || !task.createdBy || task.createdBy === currentUserEmail;
+  // с доступом к доске) видит кнопки управления задачей.
+  const canFullyEdit = !task || !task.createdBy || task.createdBy === currentUserEmail || isAdmin;
   // Комментарий исполнителя редактирует только сам исполнитель.
   const canEditComment = Boolean(task && task.assigneeEmail && task.assigneeEmail === currentUserEmail);
   // Скриншоты может прикреплять и создатель, и исполнитель задачи.

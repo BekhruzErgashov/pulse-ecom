@@ -1,7 +1,17 @@
 import "server-only";
-import { deleteTask, getBoard, getTask, getUserByEmail, updateTask } from "@/lib/data";
+import {
+  deleteTask,
+  deleteTelegramDraft,
+  getBoard,
+  getTask,
+  getTelegramDraft,
+  getUserByEmail,
+  startTelegramDraft,
+  updateTask,
+} from "@/lib/data";
 import {
   answerCallbackQuery,
+  sendMessage,
   boardDeepLink,
   editMessageText,
   escapeHtml,
@@ -24,6 +34,8 @@ import type { Task } from "@/lib/models";
  *   tca:  — убрать в архив
  *   tcdq: — спросить подтверждение удаления
  *   tcd:  — удалить окончательно
+ *   tcet: — изменить название
+ *   tced: — изменить описание
  */
 export type TaskCardList = "mt" | "td" | "ag";
 
@@ -42,23 +54,29 @@ function label(collection: readonly { id: string; label: string }[], id: string)
   return collection.find((item) => item.id === id)?.label ?? id;
 }
 
-/** Управлять задачей (архив, удаление) может её постановщик; у старых задач автор мог не сохраниться — тогда доступ открыт всем, как и в приложении. */
-function canManage(task: Task, email: string): boolean {
-  return !task.createdBy || task.createdBy === email;
+/**
+ * Управлять задачей (правка, архив, удаление) может её постановщик или
+ * администратор. У старых задач автор мог не сохраниться — тогда доступ
+ * открыт всем, как и в приложении. Админ нужен не для галочки: у человека
+ * может быть два аккаунта, а коллега — уйти из команды, и его задачи иначе
+ * оставались бы неудаляемыми навсегда.
+ */
+async function canManage(task: Task, email: string): Promise<boolean> {
+  if (!task.createdBy || task.createdBy === email) return true;
+  const user = await getUserByEmail(email);
+  return user?.role === "admin";
 }
 
 function backRow(list: TaskCardList, offset: number): InlineButton[] {
   return [{ text: "← К списку", callback_data: `${list}:${offset}` }];
 }
 
-async function renderCard(
-  chatId: string,
-  messageId: number,
+async function buildCard(
   task: Task,
   email: string,
   list: TaskCardList,
   offset: number,
-): Promise<void> {
+): Promise<{ text: string; keyboard: InlineButton[][] }> {
   const board = await getBoard(task.boardId);
   const assignee = task.assigneeEmail ? await getUserByEmail(task.assigneeEmail) : undefined;
 
@@ -79,7 +97,11 @@ async function renderCard(
   if (board) {
     keyboard.push([{ text: "Открыть", url: boardDeepLink(board.workspaceId, board.id) }]);
   }
-  if (canManage(task, email)) {
+  if (await canManage(task, email)) {
+    keyboard.push([
+      { text: "✏️ Название", callback_data: `tcet:${list}:${offset}:${task.id}` },
+      { text: "✏️ Описание", callback_data: `tced:${list}:${offset}:${task.id}` },
+    ]);
     keyboard.push([
       { text: "📦 В архив", callback_data: `tca:${list}:${offset}:${task.id}` },
       { text: "🗑 Удалить", callback_data: `tcdq:${list}:${offset}:${task.id}` },
@@ -87,7 +109,7 @@ async function renderCard(
   }
   keyboard.push(backRow(list, offset));
 
-  await editMessageText(chatId, messageId, lines.join("\n"), { keyboard });
+  return { text: lines.join("\n"), keyboard };
 }
 
 /**
@@ -102,7 +124,7 @@ export async function handleTaskCardCallback(input: {
   data: string;
 }): Promise<boolean> {
   const { callbackQueryId, chatId, messageId, email, data } = input;
-  if (!/^(tc|tca|tcdq|tcd):/.test(data)) return false;
+  if (!/^(tc|tca|tcdq|tcd|tcet|tced):/.test(data)) return false;
 
   const parsed = parse(data);
   if (!parsed || !messageId) {
@@ -122,11 +144,12 @@ export async function handleTaskCardCallback(input: {
 
   if (action === "tc") {
     await answerCallbackQuery(callbackQueryId);
-    await renderCard(chatId, messageId, task, email, list, offset);
+    const card = await buildCard(task, email, list, offset);
+    await editMessageText(chatId, messageId, card.text, { keyboard: card.keyboard });
     return true;
   }
 
-  if (!canManage(task, email)) {
+  if (!(await canManage(task, email))) {
     await answerCallbackQuery(callbackQueryId, "Управлять задачей может только тот, кто её поставил");
     return true;
   }
@@ -163,6 +186,26 @@ export async function handleTaskCardCallback(input: {
     return true;
   }
 
+  if (action === "tcet" || action === "tced") {
+    const field = action === "tcet" ? "название" : "описание";
+    await startTelegramDraft({
+      chatId,
+      email,
+      step: action === "tcet" ? "edit_title" : "edit_description",
+      editingTaskId: task.id,
+    });
+    await answerCallbackQuery(callbackQueryId);
+    await editMessageText(
+      chatId,
+      messageId,
+      `✏️ <b>${escapeHtml(task.title)}</b>\n\nПришлите новое ${field} одним сообщением.${
+        action === "tced" ? "\nЧтобы стереть описание, отправьте «-»." : ""
+      }`,
+      { keyboard: [[{ text: "Отмена", callback_data: `tc:${list}:${offset}:${task.id}` }]] },
+    );
+    return true;
+  }
+
   if (action === "tcd") {
     await deleteTask(taskId);
     await answerCallbackQuery(callbackQueryId, "Удалено 🗑");
@@ -173,4 +216,53 @@ export async function handleTaskCardCallback(input: {
   }
 
   return false;
+}
+
+/**
+ * Текстовое сообщение как шаг правки задачи из карточки. Возвращает true,
+ * если сообщение относилось к правке — тогда вебхук не разбирает его дальше
+ * (ни как шаг /newtask, ни как команду).
+ */
+export async function handleTaskEditText(
+  chatId: string,
+  email: string,
+  text: string,
+): Promise<boolean> {
+  const draft = await getTelegramDraft(chatId);
+  if (!draft || !draft.editingTaskId) return false;
+  if (draft.step !== "edit_title" && draft.step !== "edit_description") return false;
+
+  const task = await getTask(draft.editingTaskId);
+  if (!task) {
+    await deleteTelegramDraft(chatId);
+    await sendMessage(chatId, "Задача не найдена — возможно, её уже удалили.");
+    return true;
+  }
+  if (!(await canManage(task, email))) {
+    await deleteTelegramDraft(chatId);
+    await sendMessage(chatId, "Менять задачу может только тот, кто её поставил, или администратор.");
+    return true;
+  }
+
+  const value = text.trim();
+  if (draft.step === "edit_title") {
+    if (value.length < 3) {
+      await sendMessage(chatId, "Слишком короткое название — от 3 символов.");
+      return true;
+    }
+    await updateTask(task.id, { title: value.slice(0, 200) });
+  } else {
+    // «-» — способ стереть описание: пустое сообщение Telegram просто не пришлёт.
+    await updateTask(task.id, { description: value === "-" ? "" : value.slice(0, 2000) });
+  }
+
+  await deleteTelegramDraft(chatId);
+  const updated = await getTask(task.id);
+  if (!updated) return true;
+
+  // Карточку показываем новым сообщением: пользователь только что написал
+  // в чат, старое сообщение карточки уехало вверх.
+  const card = await buildCard(updated, email, "ag", 0);
+  await sendMessage(chatId, `✅ Сохранено\n\n${card.text}`, { keyboard: card.keyboard });
+  return true;
 }

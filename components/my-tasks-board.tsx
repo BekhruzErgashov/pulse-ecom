@@ -369,6 +369,7 @@ export function MyTasksBoard({
         currentUserEmail={currentUserEmail}
         onUpdated={handleUpdated}
         onDeleted={handleDeleted}
+        onArchived={handleDeleted}
       />
     </div>
   );

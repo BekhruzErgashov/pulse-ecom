@@ -26,7 +26,11 @@ import {
 } from "@/lib/telegram";
 import { notify } from "@/lib/notifications";
 import { handleAssignedByMe, handleAssignedPage } from "@/lib/telegram-assigned";
-import { handleTaskCardCallback, taskCardButton } from "@/lib/telegram-task-actions";
+import {
+  handleTaskCardCallback,
+  handleTaskEditText,
+  taskCardButton,
+} from "@/lib/telegram-task-actions";
 import {
   NEWTASK_BUTTON,
   handleNewTaskCallback,
@@ -411,6 +415,11 @@ export async function POST(request: NextRequest) {
     // /newtask — например, заголовком задачи. Если черновика нет, обработчик
     // вернёт false и сообщение разберётся дальше как команда.
     if (text && !text.startsWith("/") && !MENU_TEXTS.has(text.toLowerCase())) {
+      // Сначала правка существующей задачи из карточки, затем шаги /newtask —
+      // состояния не пересекаются, обработчики возвращают false «не моё».
+      const handledAsEdit = await handleTaskEditText(chatId, link.email, text);
+      if (handledAsEdit) return NextResponse.json({ ok: true });
+
       const handledAsDraft = await handleNewTaskText(chatId, text);
       if (handledAsDraft) return NextResponse.json({ ok: true });
     }

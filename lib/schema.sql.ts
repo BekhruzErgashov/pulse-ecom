@@ -232,6 +232,8 @@ CREATE TABLE IF NOT EXISTS telegram_drafts (
 ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS kind TEXT;
 ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS priority TEXT;
+-- Правка названия/описания существующей задачи прямо из карточки в боте.
+ALTER TABLE telegram_drafts ADD COLUMN IF NOT EXISTS editing_task_id TEXT;
 
 CREATE TABLE IF NOT EXISTS task_events (
   id TEXT PRIMARY KEY,

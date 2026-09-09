@@ -195,7 +195,9 @@ export type TelegramDraftStep =
   | "priority"
   | "assignee"
   | "due"
-  | "calendar";
+  | "calendar"
+  | "edit_title"
+  | "edit_description";
 
 /**
  * Черновик задачи, создаваемой через бота. Живёт в хранилище, а не в памяти
@@ -220,6 +222,8 @@ export interface TelegramDraft {
   calendarMessageId: number | null;
   /** Месяц, показанный в календаре сейчас, в формате YYYY-MM. */
   calendarMonth: string | null;
+  /** Какую существующую задачу правим (шаги edit_title / edit_description). Для создания новой — null. */
+  editingTaskId: string | null;
   expiresAt: string;
   updatedAt: string;
 }

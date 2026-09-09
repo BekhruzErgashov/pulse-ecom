@@ -935,6 +935,7 @@ export async function startTelegramDraft(input: {
   step: TelegramDraftStep;
   workspaceId?: string | null;
   boardId?: string | null;
+  editingTaskId?: string | null;
 }): Promise<TelegramDraft> {
   const draft: TelegramDraft = {
     chatId: input.chatId,
@@ -950,6 +951,7 @@ export async function startTelegramDraft(input: {
     dueDate: null,
     calendarMessageId: null,
     calendarMonth: null,
+    editingTaskId: input.editingTaskId ?? null,
     expiresAt: draftExpiry(),
     updatedAt: new Date().toISOString(),
   };
@@ -985,6 +987,7 @@ export async function updateTelegramDraft(
       | "dueDate"
       | "calendarMessageId"
       | "calendarMonth"
+      | "editingTaskId"
     >
   >,
 ): Promise<TelegramDraft | undefined> {

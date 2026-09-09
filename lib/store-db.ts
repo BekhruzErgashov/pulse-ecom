@@ -1355,6 +1355,7 @@ function rowToTelegramDraft(row: {
   due_date: string | null;
   calendar_message_id: string | number | null;
   calendar_month: string | null;
+  editing_task_id: string | null;
   expires_at: Date;
   updated_at: Date;
 }): TelegramDraft {
@@ -1374,6 +1375,7 @@ function rowToTelegramDraft(row: {
     // помещается в Number без потерь.
     calendarMessageId: row.calendar_message_id === null ? null : Number(row.calendar_message_id),
     calendarMonth: row.calendar_month,
+    editingTaskId: row.editing_task_id,
     expiresAt: row.expires_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -1386,12 +1388,13 @@ export async function startTelegramDraft(input: {
   step: TelegramDraftStep;
   workspaceId?: string | null;
   boardId?: string | null;
+  editingTaskId?: string | null;
 }): Promise<TelegramDraft> {
   const pool = getPool();
   const expiresAt = new Date(Date.now() + TELEGRAM_DRAFT_TTL_MS).toISOString();
   const res = await pool.query(
-    `INSERT INTO telegram_drafts (chat_id, email, step, workspace_id, board_id, title, assignee_email, due_date, calendar_message_id, calendar_month, expires_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL, NULL, $6, now())
+    `INSERT INTO telegram_drafts (chat_id, email, step, workspace_id, board_id, title, assignee_email, due_date, calendar_message_id, calendar_month, editing_task_id, expires_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL, NULL, $6, $7, now())
      ON CONFLICT (chat_id) DO UPDATE SET
        email = EXCLUDED.email,
        step = EXCLUDED.step,
@@ -1405,10 +1408,19 @@ export async function startTelegramDraft(input: {
        due_date = NULL,
        calendar_message_id = NULL,
        calendar_month = NULL,
+       editing_task_id = EXCLUDED.editing_task_id,
        expires_at = EXCLUDED.expires_at,
        updated_at = now()
      RETURNING *`,
-    [input.chatId, input.email, input.step, input.workspaceId ?? null, input.boardId ?? null, expiresAt],
+    [
+      input.chatId,
+      input.email,
+      input.step,
+      input.workspaceId ?? null,
+      input.boardId ?? null,
+      input.editingTaskId ?? null,
+      expiresAt,
+    ],
   );
   return rowToTelegramDraft(res.rows[0]);
 }
@@ -1438,6 +1450,7 @@ const DRAFT_COLUMN: Record<string, string> = {
   dueDate: "due_date",
   calendarMessageId: "calendar_message_id",
   calendarMonth: "calendar_month",
+  editingTaskId: "editing_task_id",
 };
 
 /** Обновляет поля черновика и продлевает TTL — каждый шаг диалога отодвигает протухание. */
@@ -1457,6 +1470,7 @@ export async function updateTelegramDraft(
       | "dueDate"
       | "calendarMessageId"
       | "calendarMonth"
+      | "editingTaskId"
     >
   >,
 ): Promise<TelegramDraft | undefined> {
