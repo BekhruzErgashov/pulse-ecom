@@ -19,9 +19,9 @@
 
   --color-on-accent: #ffffff;
 
-  --color-signal: #2451b3;
-  --color-signal-soft: #e7edfb;
-  --color-signal-ink: #16336f;
+  --color-signal: #3357d9;
+  --color-signal-soft: #e6ecfd;
+  --color-signal-ink: #1e3a8a;
 
   --color-stage-todo: #6b7280;
   --color-stage-todo-soft: #eceef1;
@@ -107,34 +107,43 @@
    переменных. Блок специально вне @layer: неслоённые правила выигрывают
    у слоя theme, который генерирует Tailwind из @theme. */
 .dark {
-  --color-paper: #1b1f27;
-  --color-paper-raised: #242932;
-  --color-ink: #eaecef;
-  --color-ink-soft: #a3acb8;
-  --color-line: #38404b;
+  /* Тёмно-индиговая палитра: общий фон почти чёрно-синий, панели заметно
+     светлее его, чтобы карточки читались на доске без рамок. */
+  --color-paper: #10132f;
+  --color-paper-raised: #1a1e44;
+  --color-ink: #e8eaf7;
+  --color-ink-soft: #9199cc;
+  --color-line: #2b3164;
 
-  /* На тёмном фоне акценты светлее подложки, поэтому текст поверх них —
-     тёмный, а не белый. */
-  --color-on-accent: #12161d;
+  /* На насыщенном синем акценте текст белый — как на кнопке «Новая задача». */
+  --color-on-accent: #ffffff;
 
-  --color-signal: #6f9bf0;
-  --color-signal-soft: #26344f;
-  --color-signal-ink: #8fb2f5;
+  --color-signal: #3d6fff;
+  --color-signal-soft: #1e2a5e;
+  --color-signal-ink: #93b1ff;
 
-  --color-stage-todo: #98a1ad;
-  --color-stage-todo-soft: #2e343d;
-  --color-stage-progress: #dfa858;
-  --color-stage-progress-soft: #3f3423;
-  --color-stage-review: #ac92e4;
-  --color-stage-review-soft: #342c4c;
-  --color-stage-done: #4cc191;
-  --color-stage-done-soft: #1e3b2b;
+  --color-stage-todo: #a3abdd;
+  --color-stage-todo-soft: #242a52;
+  --color-stage-progress: #f0a742;
+  --color-stage-progress-soft: #3a2e18;
+  --color-stage-review: #b07cf7;
+  --color-stage-review-soft: #2e2150;
+  --color-stage-done: #34d399;
+  --color-stage-done-soft: #123a30;
 
-  --color-danger: #e07c7c;
-  --color-danger-soft: #402828;
+  --color-danger: #f87171;
+  --color-danger-soft: #3d2030;
 
-  --color-urgent: #f2703f;
-  --color-urgent-soft: #46271a;
+  --color-urgent: #fb7c3c;
+  --color-urgent-soft: #45241a;
+}
+
+/* Мягкое фиолетовое свечение снизу слева — фон не выглядит плоским. */
+.dark body {
+  background-image:
+    radial-gradient(70rem 40rem at -10% 110%, rgba(124, 58, 237, 0.22), transparent 60%),
+    radial-gradient(60rem 35rem at 110% -10%, rgba(61, 111, 255, 0.14), transparent 60%);
+  background-attachment: fixed;
 }
 
 html.dark {

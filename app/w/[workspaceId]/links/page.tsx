@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import { listWorkspaces, listWorkspacesForUser, listWorkLinks } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { TeamHeader } from "@/components/team-header";
+import { AppSidebar } from "@/components/app-sidebar";
 import { QuickLinks } from "@/components/quick-links";
 
 export default async function WorkspaceLinksPage({
@@ -21,7 +21,7 @@ export default async function WorkspaceLinksPage({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <TeamHeader user={user} workspaces={workspaces} currentWorkspaceId={workspaceId} />
+      <AppSidebar user={user} workspaces={workspaces} currentWorkspaceId={workspaceId} />
       <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-10">
         <QuickLinks workspaceId={workspaceId} initialLinks={links} />
       </main>

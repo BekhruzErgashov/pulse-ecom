@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/session";
 import { listWorkspaces, listWorkspacesForUser, seedIfEmpty } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { TeamHeader } from "@/components/team-header";
+import { AppSidebar } from "@/components/app-sidebar";
 import { NoWorkspaceState } from "@/components/no-workspace-state";
 
 // /boards без ID пространства — определяем, куда вести (последнее выбранное
@@ -25,8 +25,8 @@ export default async function BoardsRedirectPage() {
 
   if (workspaces.length === 0) {
     return (
-      <div className="min-h-screen">
-        <TeamHeader user={user} />
+      <div className="min-h-screen lg:pl-56">
+        <AppSidebar user={user} />
         <main className="mx-auto max-w-6xl px-6 py-10">
           <NoWorkspaceState isAdmin={user.role === "admin"} />
         </main>

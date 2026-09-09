@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/session";
 import { listWorkspaces, listWorkspacesForUser } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { TeamHeader } from "@/components/team-header";
+import { AppSidebar } from "@/components/app-sidebar";
 import { NoWorkspaceState } from "@/components/no-workspace-state";
 
 // /links без ID пространства — тот же приём, что и в /boards, /questions,
@@ -18,8 +18,8 @@ export default async function LinksRedirectPage() {
 
   if (workspaces.length === 0) {
     return (
-      <div className="min-h-screen">
-        <TeamHeader user={user} />
+      <div className="min-h-screen lg:pl-56">
+        <AppSidebar user={user} />
         <main className="mx-auto max-w-4xl px-6 py-10">
           <NoWorkspaceState isAdmin={user.role === "admin"} />
         </main>

@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/session";
 import { getWorkspace, listMyTasksInWorkspace, listUsers, listWorkspaceMemberEmails } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
 import { collectDoneWeeks, filterDoneTasksByWeek, getCurrentWeekKey } from "@/lib/week";
-import { TeamHeader } from "@/components/team-header";
+import { AppSidebar } from "@/components/app-sidebar";
 import { MyTasksBoard } from "@/components/my-tasks-board";
 
 export default async function MyTasksPage({
@@ -46,8 +46,8 @@ export default async function MyTasksPage({
   }
 
   return (
-    <div className="min-h-screen">
-      <TeamHeader user={user} currentWorkspaceId={workspaceId} />
+    <div className="min-h-screen lg:pl-56">
+      <AppSidebar user={user} currentWorkspaceId={workspaceId} />
       <main className="mx-auto max-w-6xl px-6 py-10">
         <Link
           href={`/w/${workspaceId}/boards`}

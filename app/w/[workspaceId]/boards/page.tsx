@@ -7,7 +7,7 @@ import {
   listWorkspacesForUser,
 } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
-import { TeamHeader } from "@/components/team-header";
+import { AppSidebar } from "@/components/app-sidebar";
 import { BoardsGrid } from "@/components/boards-grid";
 import { BoardsBanner } from "@/components/boards-banner";
 import { CalendarWidget } from "@/components/calendar-widget";
@@ -56,8 +56,8 @@ export default async function WorkspaceBoardsPage({
     : ({ connected: false } as const);
 
   return (
-    <div className="min-h-screen">
-      <TeamHeader user={user} workspaces={workspaces} currentWorkspaceId={workspaceId} />
+    <div className="min-h-screen lg:pl-56">
+      <AppSidebar user={user} workspaces={workspaces} currentWorkspaceId={workspaceId} />
       <main className="mx-auto flex max-w-[94rem] gap-6 px-6 py-10">
         <div className="min-w-0 flex-1">
           <BoardsBanner workspaceId={workspaceId} />
