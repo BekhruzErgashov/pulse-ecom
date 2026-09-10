@@ -44,10 +44,15 @@ function TaskRow({
         )}
       </div>
       {assignees.length > 0 && (
-        <div className="flex -space-x-1.5">
-          {assignees.slice(0, 3).map((a) => (
+        <div className="flex shrink-0 -space-x-1.5">
+          {assignees.slice(0, 2).map((a) => (
             <Avatar key={a.email} name={a.name} color={a.color} size="sm" />
           ))}
+          {assignees.length > 2 && (
+            <span className="flex size-6 items-center justify-center rounded-full bg-[var(--color-paper)] font-mono text-[10px] text-[var(--color-ink-soft)]">
+              +{assignees.length - 2}
+            </span>
+          )}
         </div>
       )}
     </button>

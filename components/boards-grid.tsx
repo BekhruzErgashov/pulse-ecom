@@ -76,9 +76,7 @@ export function BoardsGrid({
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-semibold tracking-tight group-hover:text-[var(--color-signal)]">
-                      {board.name}
-                    </h2>
+                    <h2 className="font-semibold tracking-tight">{board.name}</h2>
                     {hasUnseen && (
                       <span className="flex items-center gap-1.5 rounded-full bg-[var(--color-signal-soft)] px-2 py-0.5 text-xs font-medium text-[var(--color-signal-ink)]">
                         <span className="size-1.5 shrink-0 rounded-full bg-[var(--color-signal)]" />
@@ -93,7 +91,7 @@ export function BoardsGrid({
                   )}
                 </div>
                 <div className="mt-auto flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs text-[var(--color-ink-soft)]">
+                  <div className="board-progress-meta flex items-center justify-between text-xs text-[var(--color-ink-soft)]">
                     <span className="font-mono">
                       {board.doneCount}/{board.taskCount} готово
                     </span>

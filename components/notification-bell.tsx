@@ -126,14 +126,14 @@ export function NotificationBell() {
       >
         <Bell className="size-4.5" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-semibold leading-none text-[var(--color-on-accent)] ring-2 ring-[var(--color-paper-raised)]">
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-[var(--color-paper-raised)]">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="panel absolute right-0 z-40 mt-2 flex max-h-[28rem] w-80 flex-col overflow-hidden shadow-md animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="panel popover absolute right-0 z-40 mt-2 flex max-h-[28rem] w-80 flex-col overflow-hidden shadow-md animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--color-line)] px-3 py-2">
             <h2 className="text-sm font-semibold">Уведомления</h2>
             {unread > 0 && (

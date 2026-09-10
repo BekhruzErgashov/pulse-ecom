@@ -72,7 +72,7 @@ export function WeekPicker({
       {open && (
         <div
           role="listbox"
-          className="panel absolute right-0 z-40 mt-1.5 max-h-64 min-w-[14rem] overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150 p-1 shadow-md"
+          className="panel popover absolute right-0 z-40 mt-1.5 max-h-64 min-w-[14rem] overflow-y-auto animate-in fade-in slide-in-from-top-1 duration-150 p-1 shadow-md"
         >
           <button
             type="button"

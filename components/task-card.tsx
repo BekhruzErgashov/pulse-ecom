@@ -1,5 +1,6 @@
 "use client";
 
+import { useDarkGlass } from "@/lib/use-dark-glass";
 import { CalendarCheck, CalendarClock, Flame, Layers, MessageSquareText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
@@ -8,13 +9,32 @@ import type { Task, User } from "@/lib/models";
 import { PRIORITIES } from "@/lib/schema";
 import { isOverdue as checkOverdue } from "@/lib/task-sort";
 import { formatWeekLabel, getTaskCompletedWeekKey } from "@/lib/week";
-import { cn } from "@/lib/utils";
+import { chipTint, cn } from "@/lib/utils";
 
 const PRIORITY_VARIANT: Record<Task["priority"], "outline" | "danger" | "urgent"> = {
   low: "outline",
   medium: "outline",
   high: "danger",
   urgent: "urgent",
+};
+
+/** В тёмной теме цвет плашки задаётся инлайн через chipTint — вариант нужен
+ *  только ради формы (padding/rounded), одинаковой у всех не-outline. */
+const PRIORITY_VARIANT_DARK: Record<Task["priority"], "todo" | "in_progress" | "review" | "urgent"> = {
+  low: "todo",
+  medium: "in_progress",
+  high: "review",
+  urgent: "urgent",
+};
+
+/** Точка-индикатор слева от заголовка и заливка плашки приоритета в тёмной
+ *  теме. Urgent намеренно взят из токена, а не из этой пёстрой палитры: он
+ *  единственный несёт смысл «горит» и в остальном интерфейсе (Flame, фильтр). */
+const PRIORITY_DOT: Record<Task["priority"], string> = {
+  low: "#4fb8d6",
+  medium: "#4e7fe0",
+  high: "#d66b93",
+  urgent: "var(--color-urgent)",
 };
 
 function formatDateTime(iso: string): string {
@@ -59,6 +79,7 @@ export function TaskCard({
   /** Не передан — режима выделения нет и чекбокс не рисуется. */
   onToggleSelect?: () => void;
 }) {
+  const isDarkGlass = useDarkGlass();
   const priorityLabel = PRIORITIES.find((p) => p.id === task.priority)?.label;
   const isUrgent = task.priority === "urgent";
   const isOverdue = checkOverdue(task);
@@ -72,14 +93,36 @@ export function TaskCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={cn(
-        "panel card-hover flex w-full cursor-grab flex-col gap-2 p-3 text-left active:cursor-grabbing",
-        isUrgent && "border-l-[3px] border-l-[var(--color-urgent)] bg-[var(--color-urgent-soft)]/40",
-        selected && "border-[var(--color-signal)] ring-1 ring-[var(--color-signal)]",
+        // p-3→p-4: карточка — самый повторяемый элемент интерфейса, её
+        // плотность заметнее любой другой правки разом.
+        "panel card-hover flex w-full cursor-grab flex-col gap-2.5 p-4 text-left active:cursor-grabbing",
+        isUrgent &&
+          (isDarkGlass
+            ? "bg-[var(--color-urgent-soft)]/20"
+            : "border-l-[3px] border-l-[var(--color-urgent)] bg-[var(--color-urgent-soft)]/40"),
+        selected && "ring-2 ring-[var(--color-signal)]",
       )}
     >
       <div className="flex items-start gap-1.5">
-        {isUrgent && <Flame className="mt-0.5 size-3.5 shrink-0 text-[var(--color-urgent)]" />}
-        <p className={cn("text-sm font-medium leading-snug", onToggleSelect && "pr-6")}>{task.title}</p>
+        {isDarkGlass ? (
+          <span
+            className="mt-1.5 size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: PRIORITY_DOT[task.priority] }}
+            title={priorityLabel}
+          />
+        ) : (
+          isUrgent && <Flame className="mt-0.5 size-3.5 shrink-0 text-[var(--color-urgent)]" />
+        )}
+        <p
+          className={cn(
+            "text-sm leading-snug",
+            isDarkGlass ? "font-display text-[14.5px] font-semibold" : "font-medium",
+            onToggleSelect && "pr-6",
+          )}
+        >
+          {task.title}
+        </p>
+        {isDarkGlass && isUrgent && <Flame className="mt-0.5 size-3.5 shrink-0 text-[var(--color-urgent)]" />}
       </div>
 
       {boardName && (
@@ -103,8 +146,18 @@ export function TaskCard({
       )}
 
       <div className="flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant={PRIORITY_VARIANT[task.priority]}>{priorityLabel}</Badge>
+        <div className={cn("flex flex-wrap items-center", isDarkGlass ? "gap-1" : "gap-1.5")}>
+          <Badge
+            variant={isDarkGlass ? PRIORITY_VARIANT_DARK[task.priority] : PRIORITY_VARIANT[task.priority]}
+            className={isDarkGlass ? "px-1.5 py-0 text-[10px]" : undefined}
+            style={
+              isDarkGlass
+                ? { backgroundColor: chipTint(PRIORITY_DOT[task.priority]), color: "#fff" }
+                : undefined
+            }
+          >
+            {priorityLabel}
+          </Badge>
           {task.resultNote && (
             <span title="Есть отчёт о выполнении">
               <MessageSquareText className="size-3.5 text-[var(--color-ink-soft)]" />
@@ -125,12 +178,12 @@ export function TaskCard({
         {assignees.length > 0 && (
           // Аватары внахлёст: несколько исполнителей должны помещаться в
           // карточку, не растягивая её.
-          <div className="flex -space-x-1.5">
+          <div className="flex shrink-0 -space-x-1.5">
             {assignees.slice(0, 3).map((a) => (
               <Avatar key={a.email} name={a.name} color={a.color} size="sm" />
             ))}
             {assignees.length > 3 && (
-              <span className="flex size-6 items-center justify-center rounded-full border border-[var(--color-line)] bg-[var(--color-paper)] text-[10px] font-medium text-[var(--color-ink-soft)]">
+              <span className="flex size-6 items-center justify-center rounded-full bg-[var(--color-paper)] font-mono text-[10px] text-[var(--color-ink-soft)]">
                 +{assignees.length - 3}
               </span>
             )}

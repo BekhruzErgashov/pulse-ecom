@@ -8,7 +8,6 @@ import {
 } from "@/lib/data";
 import { canAccessWorkspace } from "@/lib/access";
 import { AppShell } from "@/components/app-shell";
-import { BoardsTopbarBanner } from "@/components/boards-topbar-banner";
 import { BoardsGrid } from "@/components/boards-grid";
 import { BoardsBanner } from "@/components/boards-banner";
 import { CalendarWidget } from "@/components/calendar-widget";
@@ -64,7 +63,6 @@ export default async function WorkspaceBoardsPage({
       active="boards"
       eyebrow="Команда"
       title="Доски задач"
-      topbarBanner={<BoardsTopbarBanner workspaceId={workspaceId} />}
       mainClassName="mx-auto flex max-w-[94rem] gap-6 px-6 py-10"
     >
         <div className="min-w-0 flex-1">

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useDarkGlass } from "@/lib/use-dark-glass";
 import { toast } from "sonner";
 import {
   Archive,
@@ -17,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { AssigneeMultiSelect } from "@/components/assignee-multi-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -255,6 +256,8 @@ export function TaskDialog({
   const canEditComment = Boolean(task && task.assigneeEmails.includes(currentUserEmail));
   // Скриншоты может прикреплять и создатель, и исполнитель задачи.
   const canManageAttachments = canFullyEdit || canEditComment;
+
+  const isDarkGlass = useDarkGlass();
 
   const [mode, setMode] = React.useState<"view" | "edit">(isEdit ? "view" : "edit");
 
@@ -703,7 +706,15 @@ export function TaskDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Новая задача</DialogTitle>
+            <DialogTitle
+              className={
+                isDarkGlass
+                  ? "font-display text-[32px] leading-[1.1] font-bold tracking-[-0.02em] text-white"
+                  : undefined
+              }
+            >
+              Новая задача
+            </DialogTitle>
           </DialogHeader>
           <TaskForm
             title={title}
@@ -755,7 +766,13 @@ export function TaskDialog({
           <>
             <DialogHeader>
               <div className="flex items-start justify-between gap-3">
-                <DialogTitle className="flex items-center gap-1.5">
+                <DialogTitle
+                  className={cn(
+                    "flex items-center gap-1.5",
+                    isDarkGlass &&
+                      "font-display gap-2.5 text-[28px] leading-[1.08] font-bold tracking-[-0.02em] text-white",
+                  )}
+                >
                   {task.priority === "urgent" && (
                     <Flame className="size-4 shrink-0 text-[var(--color-urgent)]" />
                   )}
@@ -1125,40 +1142,16 @@ function TaskForm({
           </Select>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label>Исполнители</Label>
-          {/* Чекбоксы, а не выпадающий список: на задачу можно назначить
-              несколько человек, и выбранные должны быть видны сразу. */}
-          <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto rounded-(--radius-control) border border-[var(--color-line)] p-1.5">
-            {members.length === 0 && (
-              <p className="px-2 py-1 text-sm text-[var(--color-ink-soft)]">
-                В пространстве пока нет участников.
-              </p>
-            )}
-            {members.map((m) => (
-              <label
-                key={m.email}
-                className="flex cursor-pointer items-center gap-2 rounded-(--radius-control) px-2 py-1.5 hover:bg-[var(--color-paper)]"
-              >
-                <Checkbox
-                  checked={assigneeEmails.includes(m.email)}
-                  onChange={() =>
-                    setAssigneeEmails(
-                      assigneeEmails.includes(m.email)
-                        ? assigneeEmails.filter((e) => e !== m.email)
-                        : [...assigneeEmails, m.email],
-                    )
-                  }
-                />
-                <Avatar name={m.name} color={m.color} size="sm" />
-                <span className="text-sm">{m.name}</span>
-              </label>
-            ))}
-          </div>
-          <p className="text-xs text-[var(--color-ink-soft)]">
-            {assigneeEmails.length === 0
-              ? "Никто не назначен"
-              : `Выбрано: ${assigneeEmails.length}`}
-          </p>
+          <Label htmlFor="task-assignee">Исполнители</Label>
+          {/* Выпадающий мультивыбор, а не раскрытый список чекбоксов: список
+              участников занимал полформы, а выбор делается редко — по правке
+              пользователя сначала открываем меню, потом отмечаем людей. */}
+          <AssigneeMultiSelect
+            id="task-assignee"
+            members={members}
+            value={assigneeEmails}
+            onChange={setAssigneeEmails}
+          />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="task-due">Срок (дата и время)</Label>

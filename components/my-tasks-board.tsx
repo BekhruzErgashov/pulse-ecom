@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useDarkGlass } from "@/lib/use-dark-glass";
 import {
   AlertTriangle,
   CalendarClock,
@@ -51,6 +52,7 @@ export function MyTasksBoard({
   currentUserEmail: string;
   initialOpenTaskId?: string;
 }) {
+  const isDarkGlass = useDarkGlass();
   const [tasks, setTasks] = React.useState(initialTasks);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingTask, setEditingTask] = React.useState<TaskWithBoard | undefined>(() =>
@@ -270,11 +272,16 @@ export function MyTasksBoard({
 
   return (
     <div>
-      <StageRail counts={counts} total={tasks.length} />
+      {!isDarkGlass && <StageRail counts={counts} total={tasks.length} />}
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div
+            className={cn(
+              "mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between",
+              isDarkGlass && "panel relative z-20 border-solid p-2.5",
+            )}
+          >
             <div className="relative w-full sm:max-w-56">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--color-ink-soft)]" />
               <Input
@@ -317,12 +324,32 @@ export function MyTasksBoard({
                 return (
                   <section
                     key={group.id}
-                    className="rounded-(--radius-card) border border-[var(--color-line)] bg-[var(--color-paper-raised)]/60 p-4"
+                    className={cn(
+                      isDarkGlass
+                        ? "panel border-solid p-4"
+                        : "rounded-(--radius-card) border border-[var(--color-line)] bg-[var(--color-paper-raised)]/60 p-4",
+                    )}
                   >
                     <div className="mb-3 flex items-center gap-2">
                       <Icon className={cn("size-4", group.tone)} />
-                      <h2 className={cn("text-base font-semibold", group.tone)}>{group.label}</h2>
-                      <span className="rounded-full bg-[var(--color-paper)] px-2 py-0.5 font-mono text-xs text-[var(--color-ink-soft)]">
+                      <h2
+                        className={cn(
+                          isDarkGlass
+                            ? "font-display text-[15px] font-semibold"
+                            : "text-base font-semibold",
+                          group.tone,
+                        )}
+                      >
+                        {group.label}
+                      </h2>
+                      <span
+                        className={cn(
+                          "rounded-full bg-[var(--color-paper)] font-mono text-[var(--color-ink-soft)]",
+                          isDarkGlass
+                            ? "px-1.5 py-0.5 text-[11px] font-semibold"
+                            : "px-2 py-0.5 text-xs",
+                        )}
+                      >
                         {group.tasks.length}
                       </span>
                       {group.id === "done" &&
@@ -334,11 +361,21 @@ export function MyTasksBoard({
                     </div>
 
                     {group.tasks.length === 0 ? (
-                      <p className="text-sm text-[var(--color-ink-soft)]">
+                      <p
+                        className={cn(
+                          "text-[var(--color-ink-soft)]",
+                          isDarkGlass ? "px-1 pb-1 text-xs" : "text-sm",
+                        )}
+                      >
                         {filtersActive ? "Нет подходящих задач" : "Пусто"}
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                      <div
+                        className={cn(
+                          "grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3",
+                          isDarkGlass ? "gap-2" : "gap-3",
+                        )}
+                      >
                         {group.tasks.map((task) => (
                           <TaskCard
                             key={task.id}

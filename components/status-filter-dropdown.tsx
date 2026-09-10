@@ -73,7 +73,7 @@ export function StatusFilterDropdown({
       {open && (
         <div
           role="listbox"
-          className="panel absolute z-40 mt-1.5 min-w-[13rem] animate-in fade-in slide-in-from-top-1 duration-150 overflow-hidden p-1 shadow-md"
+          className="panel popover absolute z-40 mt-1.5 min-w-[13rem] animate-in fade-in slide-in-from-top-1 duration-150 overflow-hidden p-1 shadow-md"
         >
           <button
             type="button"

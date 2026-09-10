@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
+import { useDarkGlass } from "@/lib/use-dark-glass";
 import { Archive, ListChecks, Plus, Inbox, Search, SearchX, Trash2, X } from "lucide-react";
 import { StageRail } from "@/components/stage-rail";
 import { StatusFilterDropdown, type StatusFilterValue } from "@/components/status-filter-dropdown";
@@ -44,6 +45,7 @@ export function KanbanBoard({
   allUsers: User[];
   currentUserEmail: string;
 }) {
+  const isDarkGlass = useDarkGlass();
   const [tasks, setTasks] = React.useState(initialTasks);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingTask, setEditingTask] = React.useState<Task | undefined>();
@@ -355,11 +357,16 @@ export function KanbanBoard({
 
   return (
     <div>
-      <StageRail counts={counts} total={tasks.length} />
+      {!isDarkGlass && <StageRail counts={counts} total={tasks.length} />}
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div
+            className={cn(
+              "mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between",
+              isDarkGlass && "panel relative z-20 border-solid p-2.5",
+            )}
+          >
             <div className="relative w-full sm:max-w-56">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[var(--color-ink-soft)]" />
               <Input
@@ -428,6 +435,7 @@ export function KanbanBoard({
                     onDrop={(e) => handleDrop(e, stage.id)}
                     className={cn(
                       "flex flex-col gap-3 rounded-(--radius-card) border border-dashed border-transparent p-2 transition-colors",
+                      isDarkGlass && "panel border-solid p-4",
                       isOver && "border-[var(--color-signal)] bg-[var(--color-signal-soft)]/40",
                     )}
                   >
@@ -438,9 +446,18 @@ export function KanbanBoard({
                           style={{ backgroundColor: STAGE_ACCENT[stage.id] }}
                         />
                         <span className="text-sm font-medium">{stage.label}</span>
-                        <span className="font-mono text-xs text-[var(--color-ink-soft)]">
-                          {stageTasks.length}
-                        </span>
+                        {isDarkGlass ? (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--color-ink-soft)]"
+                            style={{ backgroundColor: "var(--color-paper)" }}
+                          >
+                            {stageTasks.length}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-xs text-[var(--color-ink-soft)]">
+                            {stageTasks.length}
+                          </span>
+                        )}
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {/* Чекбокс колонки появляется, только когда выделение уже
@@ -462,7 +479,7 @@ export function KanbanBoard({
                         <button
                           type="button"
                           onClick={() => openCreate(stage.id)}
-                          className="flex items-center justify-center rounded-full bg-[var(--color-signal-soft)] p-1 text-[var(--color-signal-ink)] shadow-sm transition-colors hover:bg-[var(--color-signal)] hover:text-[var(--color-on-accent)]"
+                          className="flex items-center justify-center rounded-full bg-[var(--color-signal-soft)] p-1 text-[var(--color-signal-ink)] shadow-sm transition-colors hover:bg-[var(--color-signal)] hover:text-white"
                           aria-label={`Добавить задачу в «${stage.label}»`}
                         >
                           <Plus className="size-3.5" />
@@ -472,12 +489,18 @@ export function KanbanBoard({
 
                     <div className="flex min-h-24 flex-col gap-2">
                       {stageTasks.length === 0 ? (
-                        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-(--radius-card) border border-dashed border-[var(--color-line)] py-6 text-center">
-                          <Inbox className="size-4 text-[var(--color-ink-soft)]" />
-                          <span className="text-xs text-[var(--color-ink-soft)]">
+                        isDarkGlass ? (
+                          <p className="px-1 py-4 text-center text-xs text-[var(--color-ink-soft)]">
                             {filtersActive ? "Нет подходящих задач" : "Пусто"}
-                          </span>
-                        </div>
+                          </p>
+                        ) : (
+                          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-(--radius-card) border border-dashed border-[var(--color-line)] py-6 text-center">
+                            <Inbox className="size-4 text-[var(--color-ink-soft)]" />
+                            <span className="text-xs text-[var(--color-ink-soft)]">
+                              {filtersActive ? "Нет подходящих задач" : "Пусто"}
+                            </span>
+                          </div>
+                        )
                       ) : (
                         stageTasks.map((task) => (
                           <div key={task.id} className={cn(draggingId === task.id && "opacity-40")}>

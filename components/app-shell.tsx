@@ -65,7 +65,6 @@ export function AppShell({
   eyebrow,
   title,
   boardHref,
-  topbarBanner,
   wrapperClassName = "min-h-screen",
   mainClassName = "mx-auto max-w-6xl px-6 py-10",
   children,
@@ -78,12 +77,6 @@ export function AppShell({
   title: string;
   /** Известен только на экране одной доски — включает пилюлю Доски/Доска в топбаре. */
   boardHref?: string;
-  /** Баннер прямо в топбаре, между заголовком и поиском (только доски-
-   *  список) — по разметке пользователя (красная рамка на скриншоте):
-   *  заполняет весь горизонтальный зазор между заголовком и поиском, не
-   *  на всю ширину страницы. Игнорируется в светлой теме (топбар — только
-   *  тёмная тема). */
-  topbarBanner?: React.ReactNode;
   wrapperClassName?: string;
   mainClassName?: string;
   children: React.ReactNode;
@@ -404,8 +397,6 @@ export function AppShell({
               {title}
             </h1>
           </div>
-
-          {topbarBanner && <div className="min-w-[220px] flex-1 self-stretch">{topbarBanner}</div>}
 
           {(active === "boards" || active === "board") && (
             <div className="flex items-center gap-2.5">

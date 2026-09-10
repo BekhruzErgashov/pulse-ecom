@@ -93,12 +93,6 @@ export function BoardsScreen({
 
   return (
     <div className="relative flex flex-col gap-[22px]">
-      {/* Баннер здесь больше не рендерится — по разметке пользователя
-          (красная рамка на скриншоте) он живёт прямо в топбаре AppShell,
-          в зазоре между заголовком и поиском, а не отдельной полосой
-          над этим экраном. См. components/boards-topbar-banner.tsx,
-          подключается через проп topbarBanner на уровне page.tsx. */}
-
       <div className="flex items-center justify-end gap-2.5">
         <Link
           href={`/w/${workspaceId}/my-tasks`}

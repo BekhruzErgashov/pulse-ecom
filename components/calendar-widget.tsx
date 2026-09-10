@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { useDarkGlass } from "@/lib/use-dark-glass";
 import { toast } from "sonner";
-import { Calendar, ExternalLink, Loader2, RefreshCw, Unlink } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, ExternalLink, Loader2, RefreshCw, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { GoogleCalendarEvent } from "@/lib/models";
 
 type Status =
@@ -17,6 +19,38 @@ const ERROR_MESSAGES: Record<string, string> = {
   denied: "Подключение отменено",
   failed: "Не удалось подключить календарь",
 };
+
+const WEEKDAY_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+/** Цвет точки у события — циклический набор по порядку в списке. Реальный
+ *  цвет события Google отдаёт только отдельным запросом в Colors API на
+ *  каждый colorId — не тот объём ради декоративной точки. */
+const EVENT_DOT_COLORS = ["#f0a94e", "#4e7fe0", "#8b7cf6", "#4fb8d6", "#d66b93"];
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/** Сетка дат месяца, понедельник первым столбцом, с «хвостами» соседних
+ *  месяцев, чтобы строк всегда было кратно 7. */
+function buildMonthGrid(viewMonth: Date): { date: Date; inMonth: boolean }[] {
+  const year = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const totalCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  const cells: { date: Date; inMonth: boolean }[] = [];
+  for (let i = 0; i < totalCells; i++) {
+    const date = new Date(year, month, i - firstWeekday + 1);
+    cells.push({ date, inMonth: date.getMonth() === month });
+  }
+  return cells;
+}
+
+function formatMonthLabel(d: Date): string {
+  const label = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -57,9 +91,16 @@ export function CalendarWidget({
   calendarError?: string;
   justConnected?: boolean;
 }) {
+  const isDarkGlass = useDarkGlass();
   const [status, setStatus] = React.useState<Status>(initialStatus);
   const [loading, setLoading] = React.useState(false);
   const [disconnecting, setDisconnecting] = React.useState(false);
+  const [viewMonth, setViewMonth] = React.useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const today = new Date();
+  const gridCells = React.useMemo(() => buildMonthGrid(viewMonth), [viewMonth]);
 
   React.useEffect(() => {
     if (calendarError) {
@@ -118,6 +159,147 @@ export function CalendarWidget({
     } finally {
       setDisconnecting(false);
     }
+  }
+
+  function goPrevMonth() {
+    setViewMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  }
+  function goNextMonth() {
+    setViewMonth((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  }
+
+  if (isDarkGlass) {
+    return (
+      <div className="calendar-card-glass flex w-full flex-col gap-3.5 rounded-[18px] border p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="font-display text-[13px] font-semibold">Сегодня</h2>
+            <p className="text-[11px] text-[var(--color-ink-soft)]">
+              {today.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })} г.
+            </p>
+          </div>
+          {status.connected && !status.needsReconnect && (
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="size-7" onClick={reload} aria-label="Обновить">
+                {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 text-[var(--color-ink-soft)] hover:text-[var(--color-danger)]"
+                onClick={disconnect}
+                disabled={disconnecting}
+                aria-label="Отключить календарь"
+              >
+                <Unlink className="size-3.5" />
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {!configured ? (
+          <p className="text-xs text-[var(--color-ink-soft)]">
+            Google Calendar ещё не настроен на сервере.
+          </p>
+        ) : !status.connected ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-[var(--color-ink-soft)]">
+              Подключите личный Google-календарь, чтобы видеть здесь события.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/google-calendar/connect?workspaceId=${workspaceId}`}>Подключить</a>
+            </Button>
+          </div>
+        ) : status.needsReconnect ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-[var(--color-ink-soft)]">
+              Доступ к календарю истёк — подключите его заново.
+            </p>
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/google-calendar/connect?workspaceId=${workspaceId}`}>Подключить заново</a>
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Отметок на других датах нет намеренно: события запрашиваются
+                только на сегодня, выдумывать остальные не из чего. */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between px-0.5">
+                <button
+                  type="button"
+                  onClick={goPrevMonth}
+                  aria-label="Предыдущий месяц"
+                  className="flex size-6 items-center justify-center rounded-full text-[var(--color-ink-soft)] hover:bg-[var(--color-paper)] hover:text-[var(--color-ink)]"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <span className="text-sm font-medium">{formatMonthLabel(viewMonth)}</span>
+                <button
+                  type="button"
+                  onClick={goNextMonth}
+                  aria-label="Следующий месяц"
+                  className="flex size-6 items-center justify-center rounded-full text-[var(--color-ink-soft)] hover:bg-[var(--color-paper)] hover:text-[var(--color-ink)]"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-7 gap-y-1.5">
+                {WEEKDAY_LABELS.map((w) => (
+                  <span key={w} className="text-center text-[11px] text-[var(--color-ink-soft)]">
+                    {w}
+                  </span>
+                ))}
+                {gridCells.map(({ date, inMonth }) => {
+                  const isToday = inMonth && isSameDay(date, today);
+                  return (
+                    <span
+                      key={date.toISOString()}
+                      className={cn(
+                        "mx-auto flex size-6 items-center justify-center rounded-full text-[11px]",
+                        !inMonth && "text-[var(--color-ink-soft)] opacity-40",
+                        inMonth && !isToday && "text-[var(--color-ink)]",
+                        isToday && "bg-[var(--color-signal)] font-semibold text-white",
+                      )}
+                    >
+                      {date.getDate()}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-[var(--color-line)] pt-4">
+              <h3 className="text-sm font-semibold">События на сегодня</h3>
+              {status.events.length === 0 ? (
+                <p className="text-xs text-[var(--color-ink-soft)]">На сегодня событий нет.</p>
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {status.events.map((event, i) => (
+                    <li key={event.id} className="flex items-start gap-2.5">
+                      <span
+                        className="mt-1.5 size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: EVENT_DOT_COLORS[i % EVENT_DOT_COLORS.length] }}
+                      />
+                      <a
+                        href={event.htmlLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 flex-1 hover:opacity-80"
+                      >
+                        <span className="block font-mono text-xs text-[var(--color-ink-soft)]">
+                          {event.allDay ? "весь день" : formatTime(event.start)}
+                        </span>
+                        <span className="block truncate text-sm font-medium">{event.title}</span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    );
   }
 
   return (

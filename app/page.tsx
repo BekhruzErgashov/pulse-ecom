@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { getCurrentUser } from "@/lib/session";
 import { seedIfEmpty } from "@/lib/data";
 import { StageRailPreview } from "@/components/stage-rail-preview";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function Home() {
   await seedIfEmpty();
@@ -14,12 +13,9 @@ export default async function Home() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-16">
-      <header className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Radio className="size-4 text-[var(--color-signal)]" />
-          <span className="eyebrow">Пульс</span>
-        </div>
-        <ThemeToggle />
+      <header className="flex items-center gap-2">
+        <Radio className="size-4 text-[var(--color-signal)]" />
+        <span className="eyebrow">Пульс</span>
       </header>
 
       <section className="mt-20 flex flex-col gap-8">
