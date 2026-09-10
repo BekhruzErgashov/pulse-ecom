@@ -13,3 +13,5 @@ npm-debug.log*
 !.env.docker
 # Настройки IDE (PyCharm/WebStorm) — личные, в репозитории не нужны.
 .idea/
+# То же для Claude Code: настройки прав и конфиг дев-сервера — локальные.
+.claude/
